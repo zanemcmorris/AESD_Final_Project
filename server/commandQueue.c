@@ -5,3 +5,36 @@
 */
 
 #include "commandQueue.h"
+#include <string.h>
+
+struct CommandQueue_s CommandQueue; 
+
+int commandQueueInit(){
+    if(CommandQueue.isInitComplete){
+        return ERROR_RE_INIT;
+    }
+
+    pthread_mutex_init(&CommandQueue.mutex, NULL);
+
+    memset(CommandQueue.queue, 0, sizeof(struct command) * MAX_QUEUE_SIZE);
+
+    CommandQueue.isInitComplete = true;
+    return ERROR_NONE;
+}
+
+/**
+ * @brief Kicks off processing of next command in queue. Should be called periodically to 
+ */
+int processNextCommandInQueue(){
+
+    return ERROR_NONE;
+}   
+int enqueue_command(struct command * cmd){
+
+    return ERROR_NONE;
+}
+
+int get_queue_status(){
+
+    return ERROR_NONE;
+}
