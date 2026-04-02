@@ -13,7 +13,7 @@
 #include "interfaceCommon.h"
 
 #define MAX_QUEUE_SIZE (10)
-typedef enum smState_e{
+typedef enum{
     idle = 0,
     userMode,
     perfMode,
@@ -26,7 +26,7 @@ enum commandType_e{
     perfCommand
 };
 
-typedef enum ioType_e{
+typedef enum{
     read_to_file = 0,
     write_from_file,
     read_to_buffer,
@@ -34,7 +34,7 @@ typedef enum ioType_e{
     status,
 }ioType_t;
 
-typedef enum userCommandType_e{
+typedef enum{
     io = 0,
     list_ns,
     create_ns,
@@ -42,7 +42,7 @@ typedef enum userCommandType_e{
     get_status,
 }userCommandType_t;
 
-typedef struct userCommandInfo_s{
+typedef struct{
     userCommandType_t userCommandType;
     ioType_t ioType;
     uint32_t namespace;
@@ -55,7 +55,7 @@ typedef struct userCommandInfo_s{
     uint32_t bufferLength;
 }userCommandInfo_t;
 
-typedef struct command_s{
+typedef struct{
     // State the machine needs to be in for the command to be applicable. Ex. User commands require user state. If perfState, then return an error
     smState_t stateNeeded; 
 
@@ -69,7 +69,7 @@ typedef struct command_s{
     
 }command_t;
 
-typedef struct CommandQueue_s{
+typedef struct{
     command_t queue [MAX_QUEUE_SIZE];
     uint32_t enqueueIndex;
     uint32_t dequeueIndex;
@@ -81,7 +81,7 @@ typedef struct CommandQueue_s{
 
 /*
 */
-typedef enum perfCommandType_e{
+typedef enum{
     seqWrite = 0,
     seqRead,
     randWrite,
@@ -92,14 +92,14 @@ typedef enum perfCommandType_e{
     use_custom: uses our custom IO functions
     use_fio: uses FIO to do IO
 */
-typedef enum perfMechanism_e{
+typedef enum{
     use_custom = 0,
     use_fio,
 }perfMechanism_t;
 
 /*
 */
-typedef struct perfCommandInfo_s{
+typedef struct{
     perfCommandType_t perfCommandType;
     perfMechanism_t perfMechanism;
     lbaRange_t lbaRange;

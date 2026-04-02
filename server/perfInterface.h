@@ -15,7 +15,7 @@
 #include <pthread.h>
 #include "interfaceCommon.h"
 
-typedef struct perfJobInfo_s{
+typedef struct{
     lbaRange_t lbaRange;
     uint32_t duration_ms;
     // blah blah

@@ -31,7 +31,7 @@ int processNextCommandInQueue(){
     struct command * nextCommand; // = getNextNode
 
     if(nextCommand->cmdType == userCommand){
-        switch(nextCommand->userCmdInfo.)
+        
 
     }
     else if (nextCommand->cmdType == perfCommand)

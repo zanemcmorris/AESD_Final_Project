@@ -7,7 +7,7 @@
 #ifndef INTERFACE_COMMON_H
 #define INTERFACE_COMMON_H
 
-typedef enum errorTypes_e{
+typedef enum{
     ERROR_NONE = 0,
     ERROR_STATE = -1,
     ERROR_INPUT = -2,
@@ -17,7 +17,7 @@ typedef enum errorTypes_e{
     ERROR_NO_INIT = -6,
 }error_t;
 
-typedef enum statusTypes_e{
+typedef enum{
     STATUS_OK = 0,
     STATUS_FAIL = -1,
     STATUS_NO_JOB = -2,
@@ -25,7 +25,7 @@ typedef enum statusTypes_e{
 
 }status_t;
 
-typedef struct lbaRange_s{
+typedef struct{
     uint32_t startlba;
     uint32_t endlba;
 }lbaRange_t;
