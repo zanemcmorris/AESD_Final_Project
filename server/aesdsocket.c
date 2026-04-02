@@ -18,6 +18,8 @@
 #include <stdatomic.h>
 #include <time.h>
 #include "../aesd-char-driver/aesd_ioctl.h"
+// New includes for final project
+#include "commandQueue.h"
 
 #define USE_AESD_CHAR_DEVICE (1)
 

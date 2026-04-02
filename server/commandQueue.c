@@ -7,7 +7,7 @@
 #include "commandQueue.h"
 #include <string.h>
 
-struct CommandQueue_s CommandQueue; 
+CommandQueue_t CommandQueue; 
 
 int commandQueueInit(){
     if(CommandQueue.isInitComplete){
@@ -26,6 +26,23 @@ int commandQueueInit(){
  * @brief Kicks off processing of next command in queue. Should be called periodically to 
  */
 int processNextCommandInQueue(){
+
+    // Get node at head of fifo
+    struct command * nextCommand; // = getNextNode
+
+    if(nextCommand->cmdType == userCommand){
+        switch(nextCommand->userCmdInfo.)
+
+    }
+    else if (nextCommand->cmdType == perfCommand)
+    {
+
+    }
+    else if (nextCommand->cmdType == adminCommand){
+
+    } else {
+        return ERROR_INPUT; // Unknown command type
+    }
 
     return ERROR_NONE;
 }   

@@ -10,51 +10,41 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <pthread.h>
+#include "interfaceCommon.h"
 
 #define MAX_QUEUE_SIZE (10)
-
-enum errorTypes{
-    ERROR_NONE = 0,
-    ERROR_STATE = -1,
-    ERROR_INPUT = -2,
-    ERROR_MEMORY = -3,
-    ERROR_EMPTY_QUEUE = -4,
-    ERROR_RE_INIT = -5,
-    ERROR_NO_INIT = -6,
-};
-
-enum smState{
+typedef enum smState_e{
     idle = 0,
     userMode,
     perfMode,
     error,
-};
+}smState_t;
 
-enum commandType{
+enum commandType_e{
     adminCommand = 0,
     userCommand,
     perfCommand
 };
 
-enum ioType{
+typedef enum ioType_e{
     read_to_file = 0,
     write_from_file,
     read_to_buffer,
     write_to_buffer,
     status,
-};
+}ioType_t;
 
-enum userCommandType{
+typedef enum userCommandType_e{
     io = 0,
     list_ns,
     create_ns,
     remove_ns,
     get_status,
-};
+}userCommandType_t;
 
-struct userCommandInfo{
-    enum userCommandType;
-    enum ioType;
+typedef struct userCommandInfo_s{
+    userCommandType_t userCommandType;
+    ioType_t ioType;
     uint32_t namespace;
     uint32_t lba;
     // File used to either write to the drive, or to store retrieved data. Optional Argument
@@ -63,68 +53,64 @@ struct userCommandInfo{
     // Buffer used to write data to the drive, or store data from drive. Optional arg.
     uint8_t * buffer;
     uint32_t bufferLength;
-};
+}userCommandInfo_t;
+
+typedef struct command_s{
+    // State the machine needs to be in for the command to be applicable. Ex. User commands require user state. If perfState, then return an error
+    smState_t stateNeeded; 
+
+    // Cmd type is either userCmd or perfCommand
+    enum commandType_e cmdType;
+
+    // info related to command -- We need either of them, never both.
+    // TODO: Replace two structs with a union
+    userCommandInfo_t userCmdInfo;
+    userCommandInfo_t perCmdInfo;
+    
+}command_t;
+
+typedef struct CommandQueue_s{
+    command_t queue [MAX_QUEUE_SIZE];
+    uint32_t enqueueIndex;
+    uint32_t dequeueIndex;
+    pthread_mutex_t mutex;
+    smState_t state;
+    bool isQueueEmpty;
+    bool isInitComplete;
+}CommandQueue_t;
 
 /*
 */
-enum perfCommandType{
+typedef enum perfCommandType_e{
     seqWrite = 0,
     seqRead,
     randWrite,
     randRead,
-};
+}perfCommandType_t;
 
 /*
     use_custom: uses our custom IO functions
     use_fio: uses FIO to do IO
 */
-enum perfMechanism{
+typedef enum perfMechanism_e{
     use_custom = 0,
     use_fio,
-};
-
-struct lbaRange{
-    uint32_t startlba;
-    uint32_t endlba;
-};
+}perfMechanism_t;
 
 /*
 */
-struct perfCommandInfo{
-    enum perfCommandType;
-    enum perfMechanism;
-    struct lbaRange;
-    
-};
-
-struct command{
-    // State the machine needs to be in for the command to be applicable. Ex. User commands require user state. If perfState, then return an error
-    enum smState stateNeeded; 
-    // Cmd type is either userCmd or perfCommand
-    enum commandType cmdType;
-    // info related to command -- We need either of them, never both.
-    union{
-        struct userCommandInfo;
-        struct perfCommandInfo;
-    }cmdInfo;
-};
-
-struct CommandQueue_s{
-    struct command queue [MAX_QUEUE_SIZE];
-    uint32_t enqueueIndex;
-    uint32_t dequeueIndex;
-    pthread_mutex_t mutex;
-    enum smState state;
-    bool isQueueEmpty;
-    bool isInitComplete;
-};
+typedef struct perfCommandInfo_s{
+    perfCommandType_t perfCommandType;
+    perfMechanism_t perfMechanism;
+    lbaRange_t lbaRange;
+}perfCommandInfo_t;
 
 // A single commandQueue instance will exist in the commandQueue.c file
 // Therefore, a pointer to "which" command queue is not needed
 
 int commandQueueInit();
 int processNextCommandInQueue();
-int enqueue_command(struct command * cmd);
+int enqueue_command(command_t * cmd);
 int get_queue_status();
 
 
