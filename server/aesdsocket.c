@@ -21,7 +21,7 @@
 // New includes for final project
 #include "commandQueue.h"
 
-#define USE_AESD_CHAR_DEVICE (1)
+#define USE_AESD_CHAR_DEVICE (0)
 
 #if (USE_AESD_CHAR_DEVICE == 1)
 #define LOG_PATH ("/dev/aesdchar")
@@ -372,6 +372,8 @@ void* repsondingThread(void* arg)
 {
     slist_data_t *myNodeData = (slist_data_t*) (arg);
     int clientFD = myNodeData->clientfd;
+    const char* welcomeString = "Welcome to the NVME command server!\n";
+    send(clientFD, welcomeString, strlen(welcomeString), 0);
 
     syslog(LOG_DEBUG, "New thread reporting for duty!");
 
@@ -426,7 +428,7 @@ void* repsondingThread(void* arg)
         }
     }
 
-    bool wasIoctlCommand = false;
+    // bool wasIoctlCommand = false;
 
     // Trap for failed to read to hit the cleanup and return step at the end of function
     if(!failedToRead){
@@ -435,60 +437,8 @@ void* repsondingThread(void* arg)
         // printf("new buffer: %s", buffer);
         syslog(LOG_DEBUG, "Recvd string: %s", buffer);
 
-        // Check for ioctl command
-        // If the input string was shorter than the command length then it certainly cannot be a ioctl
-        // printf("buffer size: %ld", bufferCapacity);
-        if(bufferCapacity > sizeof("AESDCHAR_IOCSEEKTO:")){
-            if(strncmp(buffer, "AESDCHAR_IOCSEEKTO:", sizeof("AESDCHAR_IOCSEEKTO:") - 1) == 0){
-            // we received a ioctl command!
-            // format:X,Y 
-                long ioctlData = 0;
-                long cmdIndex = 0, cmdOffset = 0;
-                if(sscanf(buffer, "AESDCHAR_IOCSEEKTO:%ld,%ld", &cmdIndex, &cmdOffset) == 2){
-                    // printf("x=%ld y=%ld\n", cmdIndex, cmdOffset);
-                    ioctlData = (cmdOffset << 32) | (cmdIndex);
-                    // printf("iocl: %ld\n", ioctlData);
+            // TODO: Call into command server here.
 
-                    #if USE_AESD_CHAR_DEVICE
-                    int charDevFD = open(LOG_PATH, O_RDWR);
-                    ioctl(charDevFD, AESDCHAR_IOCSEEKTO, ioctlData);
-                    sendFullLogWExistingFD(clientFD, charDevFD);
-                    close(charDevFD);
-                    syslog(LOG_DEBUG, "Sent ioctl cmd to aesdchar device.");
-                    wasIoctlCommand = true;
-                    #endif
-                }
-
-            } else {
-                printf("Failed string check\n");
-            }
-        } else {
-            printf("failed buffer size check\n");
-        }
-        
-        if(!wasIoctlCommand){
-            int logfd = open(LOG_PATH, LOG_OPTIONS, 0666);
-            if(logfd < 0){
-                perror("Could not open logfd");
-                return NULL;
-            }
-
-            pthread_mutex_lock(&logMutex);
-            write(logfd, buffer, totalBytesRecvd); // Protext the log write
-            pthread_mutex_unlock(&logMutex);
-
-            close(logfd);
-
-            if(buffer != NULL)
-            {
-                free(buffer);
-                buffer = NULL;
-            } 
-
-            pthread_mutex_lock(&logMutex);
-            sendFullLog(clientFD); // Protect the log read
-            pthread_mutex_unlock(&logMutex);
-        }
     }
 
     shutdown(clientFD, SHUT_RDWR);
@@ -510,11 +460,6 @@ int listenLoop()
 {
     int rc = 0;
     struct sockaddr_storage clientaddr;
-    
-
-    #if (USE_AESD_CHAR_DEVICE == 0)
-    startIntervalLoggingTimer(); // Start once logFD is open
-    #endif
 
     printf("starting to listen...\n");
     rc = listen(sockfd, MAX_SOCK_CONNECTIONS);
@@ -613,7 +558,7 @@ int main(int argc, char ** argv){
     // open a socket on port 9000
     int rc = openSocket(SOCKET_PORT);
 
-    // Now init mutex to procet the log data
+    // Now init mutex to protect the log data
     rc = pthread_mutex_init(&logMutex, NULL);
     if(rc == -1){
         perror("mutex create failed");
