@@ -8,6 +8,8 @@
 #define NVME_INTERFACE_H
 
 #include "interfaceCommon.h"
+#include <libnvme.h>
+
 
 typedef enum{
     NVME_STATUS_OK = 0,

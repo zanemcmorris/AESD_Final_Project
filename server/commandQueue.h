@@ -11,6 +11,8 @@
 #include <stdint.h>
 #include <pthread.h>
 #include "interfaceCommon.h"
+#include "nvmeInterface.h"
+#include "perfInterface.h"
 
 #define MAX_QUEUE_SIZE (10)
 typedef enum{
