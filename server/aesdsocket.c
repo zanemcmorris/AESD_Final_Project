@@ -17,9 +17,10 @@
 #include <sys/time.h>
 #include <stdatomic.h>
 #include <time.h>
-#include "../aesd-char-driver/aesd_ioctl.h"
+// #include "../aesd-char-driver/aesd_ioctl.h"
 // New includes for final project
 #include "commandQueue.h"
+#include <linux/limits.h>
 
 #define USE_AESD_CHAR_DEVICE (0)
 
@@ -374,8 +375,6 @@ void* repsondingThread(void* arg)
     int clientFD = myNodeData->clientfd;
     const char* welcomeString = "Welcome to the NVME command server!\n";
     send(clientFD, welcomeString, strlen(welcomeString), 0);
-
-    syslog(LOG_DEBUG, "New thread reporting for duty!");
 
     // Set up to recv from client
     size_t bufferCapacity = RECV_BUFFER_LENGTH_BYTES;
