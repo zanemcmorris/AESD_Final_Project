@@ -7,6 +7,8 @@
 #ifndef INTERFACE_COMMON_H
 #define INTERFACE_COMMON_H
 
+#include <stdint.h>
+
 typedef enum{
     ERROR_NONE = 0,
     ERROR_STATE = -1,

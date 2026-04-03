@@ -9,6 +9,10 @@
 
 CommandQueue_t CommandQueue; 
 
+/**
+ * @brief Initialize NVME command queue.
+ * @return ERROR_NONE on success
+ */
 int commandQueueInit(){
     if(CommandQueue.isInitComplete){
         return ERROR_RE_INIT;
@@ -16,7 +20,7 @@ int commandQueueInit(){
 
     pthread_mutex_init(&CommandQueue.mutex, NULL);
 
-    memset(CommandQueue.queue, 0, sizeof(struct command) * MAX_QUEUE_SIZE);
+    memset(CommandQueue.queue, 0, sizeof(command_t) * MAX_QUEUE_SIZE);
 
     CommandQueue.isInitComplete = true;
     return ERROR_NONE;
@@ -28,7 +32,8 @@ int commandQueueInit(){
 int processNextCommandInQueue(){
 
     // Get node at head of fifo
-    struct command * nextCommand; // = getNextNode
+    command_t * nextCommand = NULL; // = getNextNode
+    
 
     if(nextCommand->cmdType == userCommand){
         
@@ -46,7 +51,7 @@ int processNextCommandInQueue(){
 
     return ERROR_NONE;
 }   
-int enqueue_command(struct command * cmd){
+int enqueue_command(command_t * cmd){
 
     return ERROR_NONE;
 }

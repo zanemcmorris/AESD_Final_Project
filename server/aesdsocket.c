@@ -563,6 +563,8 @@ int main(int argc, char ** argv){
         perror("mutex create failed");
     }    
 
+    commandQueueInit();
+
     // Listen for and accept new connection
     if(rc == 0)
         rc = listenLoop();
