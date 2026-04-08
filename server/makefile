@@ -1,41 +1,48 @@
 ################################################################################
 # GNU makefile
-# File Name: makefile
 ################################################################################
 
 CC ?= $(CROSS_COMPILE)gcc
+PKG_CONFIG ?= pkg-config
+
 CFLAGS ?= -g -Wall -Werror
 TARGET ?= aesdsocket
-LDFLAGS ?= -lpthread -lrt
-INCLUDES += -I../libnvme/src
+
+# Where you installed libnvme
+LIBNVME_PREFIX ?= ../libnvme/install
+
+# Let pkg-config find libnvme.pc
+LIBNVME_PKGCONFIG := $(LIBNVME_PREFIX)/lib/pkgconfig:$(LIBNVME_PREFIX)/lib64/pkgconfig
+
+NVME_CFLAGS := $(shell PKG_CONFIG_PATH=$(LIBNVME_PKGCONFIG):$(PKG_CONFIG_PATH) $(PKG_CONFIG) --cflags libnvme)
+NVME_LIBS   := $(shell PKG_CONFIG_PATH=$(LIBNVME_PKGCONFIG):$(PKG_CONFIG_PATH) $(PKG_CONFIG) --libs libnvme)
+
+CFLAGS += $(NVME_CFLAGS)
+LDLIBS += $(NVME_LIBS) -lpthread -lrt
 
 BINDIR := bin
-OBJS = $(BINDIR)/aesdsocket.o \
-       $(BINDIR)/commandQueue.o \
-       $(BINDIR)/nvmeInterface.o \
-       $(BINDIR)/perfInterface.o
+OBJS := $(BINDIR)/aesdsocket.o \
+        $(BINDIR)/commandQueue.o \
+        $(BINDIR)/nvmeInterface.o \
+        $(BINDIR)/perfInterface.o
 
-.PHONY: all clean
+.PHONY: all clean print-vars
 
 all: $(TARGET)
 
 $(TARGET): $(OBJS)
-	$(CC) $(OBJS) -o $(TARGET) $(LDFLAGS)
+	$(CC) $(OBJS) -o $@ $(LDLIBS)
 
 $(BINDIR):
 	mkdir -p $(BINDIR)
 
-$(BINDIR)/aesdsocket.o: aesdsocket.c commandQueue.h | $(BINDIR)
-	$(CC) $(CFLAGS) $(INCLUDES) -c aesdsocket.c -o $(BINDIR)/aesdsocket.o
+$(BINDIR)/%.o: %.c | $(BINDIR)
+	$(CC) $(CFLAGS) -c $< -o $@
 
-$(BINDIR)/commandQueue.o: commandQueue.c commandQueue.h | $(BINDIR)
-	$(CC) $(CFLAGS) $(INCLUDES) -c commandQueue.c -o $(BINDIR)/commandQueue.o
-
-$(BINDIR)/nvmeInterface.o: nvmeInterface.c | $(BINDIR)
-	$(CC) $(CFLAGS) $(INCLUDES) -c nvmeInterface.c -o $(BINDIR)/nvmeInterface.o
-
-$(BINDIR)/perfInterface.o: perfInterface.c | $(BINDIR)
-	$(CC) $(CFLAGS) $(INCLUDES) -c perfInterface.c -o $(BINDIR)/perfInterface.o
+print-vars:
+	@echo "CC=$(CC)"
+	@echo "NVME_CFLAGS=$(NVME_CFLAGS)"
+	@echo "NVME_LIBS=$(NVME_LIBS)"
 
 clean:
 	rm -rf $(BINDIR) *.out $(TARGET)

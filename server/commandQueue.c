@@ -22,6 +22,8 @@ int commandQueueInit(){
 
     memset(CommandQueue.queue, 0, sizeof(command_t) * MAX_QUEUE_SIZE);
 
+    nvmeGetStatus();
+
     CommandQueue.isInitComplete = true;
     return ERROR_NONE;
 }
