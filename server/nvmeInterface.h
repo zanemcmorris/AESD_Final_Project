@@ -14,6 +14,7 @@
 typedef enum{
     NVME_STATUS_OK = 0,
     NVME_STATUS_ERROR = -1,
+    NVME_STATUS_NOT_FOUND = -2,
     
 
 }nvmeStatus_t;
