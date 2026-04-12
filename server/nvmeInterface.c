@@ -10,9 +10,9 @@
 #include <nvme/ioctl.h>
 #include <nvme/tree.h>
 #include <nvme/types.h>
+#include <parted/parted.h>
 
 #include <endian.h>
-
 
 /**
  * @brief Gets information about the interface, drive(s), and namespaces
@@ -34,6 +34,9 @@ static void print_namespace_info(nvme_ns_t n)
     printf("      approx size bytes: %llu\n", size_bytes);
 }
 
+/**
+ * @brief Get status of nvme device. Prints to stdout
+ */
 nvmeStatus_t nvmeGetStatus(void)
 {
     nvme_root_t r;
@@ -99,16 +102,158 @@ nvmeStatus_t nvmeGetStatus(void)
         return NVME_STATUS_NOT_FOUND;
     }
 
-    nvmeListNamespace();
+    nvmeCreatePartition(1024);
+    // nvmeListPartitions();
+    // nvmeListNamespace();
+
+    return NVME_STATUS_OK;
+}
+
+/**
+ * @brief List partitions in nvme drive
+ */
+nvmeStatus_t nvmeListPartitions(){
+
+    int rc = 0;
+    PedDevice * dev = NULL;
+    const char *devicePath = "/dev/nvme0n1"; // TODO: Update with known/gathered path.
+    
+    dev = ped_device_get(devicePath);
+    if(dev == NULL){
+        perror("ped_device_get failed");
+        return NVME_STATUS_NOT_FOUND;
+    }
+
+    printf("Parted device name: %s\n", dev->model);
+
+    rc = ped_device_open(dev);
+    if(rc == 0){
+        perror("ped_device_open");
+        return NVME_STATUS_ERROR;
+    }
+
+    PedDisk* disk = ped_disk_new(dev);
+    if(!disk){
+        perror("ped_disk_new");
+        return NVME_STATUS_ERROR;
+    }
+
+    PedPartition *part = NULL;
+    for(int i = 1; i < 16; i++){
+        part = ped_disk_get_partition(disk, i);
+        if(part == NULL){
+            continue;
+        }
+
+        const char* partName = ped_partition_get_name(part);
+        printf("part %d name: %s\n", i, partName);
+    }
+    
+
+    ped_disk_destroy(disk);
+    ped_device_close(dev);
 
     return NVME_STATUS_OK;
 }
 
 /**
  * @brief Create a new NVME namespace
+ * @param size number of sectors in partition
+ * @return nvmeStatus_t
  */
-nvmeStatus_t nvmeCreateNamespace(){
+nvmeStatus_t nvmeCreatePartition(uint32_t size){
+
+    int rc = 0;
+    PedDevice * dev = NULL;
+    const char *devicePath = "/dev/nvme0n1"; // TODO: Update with known/gathered path.
+    PedConstraint *constraint;
+    PedFileSystemType *fsType;
+    PedAlignment *align;
+    
+    dev = ped_device_get(devicePath);
+    if(dev == NULL){
+        perror("ped_device_get failed");
+        return NVME_STATUS_NOT_FOUND;
+    }
+
+    printf("Parted device name: %s\n", dev->model);
+
+    rc = ped_device_open(dev);
+    if(rc == 0){
+        perror("ped_device_open");
+        return NVME_STATUS_ERROR;
+    }
+
+    PedDisk* disk = ped_disk_new(dev);
+    if(!disk){
+        perror("ped_disk_new");
+        return NVME_STATUS_ERROR;
+    }
+
+    fsType = ped_file_system_type_get("ext4"); // TODO: replace literal with better mechanism for fstype
+    if(fsType == NULL){
+        perror("ped_file_system_type_get");
+        return NVME_STATUS_ERROR;
+    }
+    align = ped_disk_get_partition_alignment(disk);
+    printf("Found %lld alignment\n", align->grain_size);
+
+    uint32_t sectorSize = dev->sector_size;
+    printf("sector size: %d\n", sectorSize);
+
+    // Need to find a sector range that can fit the requested new partition
+    // TODO: Update with a gap-filling method instead of appending.
+    PedSector sectorStart = 0;
+
+    int lastPartNum = ped_disk_get_last_partition_num(disk);
+    if(lastPartNum == -1){
+        perror("ped_disk_get_last_partition_num");
+        return NVME_STATUS_ERROR;
+    }
+
+    sectorStart = ped_disk_get_partition(disk, lastPartNum)->geom.end;
+
+    PedSector maxSector = dev->length-1;
+    if(sectorStart + size > maxSector){
+        return NVME_STATUS_INPUT;
+    }
+     
+    PedPartition *newPart = ped_partition_new(disk, PED_PARTITION_NORMAL, fsType, sectorStart, sectorStart + size);
+    if(newPart == NULL){
+        perror("ped_partition_new");
+        goto createParitionError;
+    } else {
+        printf("created new part!\n");
+    }
+
+    constraint = ped_device_get_optimal_aligned_constraint(dev);
+    
+
+    rc = ped_disk_add_partition(disk, newPart, constraint);
+    if(rc == 0){
+        perror("ped_disk_add_partition");
+        goto createParitionError;
+    }
+
+    rc = ped_disk_commit_to_dev(disk);
+    if(rc == 0){
+        perror("ped_disk_commit_to_dev");
+        goto createParitionError;
+    }
+
+    rc = ped_disk_commit_to_os(disk);
+    if(rc == 0){
+        perror("ped_disk_commit_to_os");
+        goto createParitionError;
+    }
+
     return NVME_STATUS_OK;
+
+    createParitionError:
+    ped_disk_destroy(disk);
+    ped_device_close(dev);
+    ped_constraint_destroy(constraint);
+    return NVME_STATUS_ERROR;
 }
 
 /**
@@ -116,7 +261,7 @@ nvmeStatus_t nvmeCreateNamespace(){
  * @return Returns NVME_STATUS_ERROR if namespace doesn't exist or cannot be deleted
  *         Otherwise returns NVME_STATUS_OK if operation could be completed
  */
-nvmeStatus_t nvmeDeleteNamespace(){
+nvmeStatus_t nvmeDeletePartition(){
     return NVME_STATUS_OK;
 }
 
@@ -162,9 +307,10 @@ nvmeStatus_t nvmeListNamespace(){
  * @brief Usercommand to write an LBA range in a namespace with some information
  * TODO: Needs more inputs and implementation.
  */
-nvmeStatus_t nvmeWriteNamespaceLba(uint32_t ns, lbaRange_t lbaRange){
+nvmeStatus_t nvmeWritePartitionLba(uint32_t ns, lbaRange_t lbaRange){
     return NVME_STATUS_OK;
 }
-nvmeStatus_t nvmeReadNamespaceLba(uint32_t ns, lbaRange_t lbaRange){
+nvmeStatus_t nvmeReadPartitionLba(uint32_t ns, lbaRange_t lbaRange){
     return NVME_STATUS_OK;
 }
+

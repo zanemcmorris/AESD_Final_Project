@@ -15,18 +15,20 @@ typedef enum{
     NVME_STATUS_OK = 0,
     NVME_STATUS_ERROR = -1,
     NVME_STATUS_NOT_FOUND = -2,
+    NVME_STATUS_INPUT = -3,
     
 
 }nvmeStatus_t;
 
 nvmeStatus_t nvmeGetStatus();
 
-nvmeStatus_t nvmeCreateNamespace();
-nvmeStatus_t nvmeDeleteNamespace();
 nvmeStatus_t nvmeListNamespace();
+nvmeStatus_t nvmeCreatePartition(uint32_t size);
+nvmeStatus_t nvmeDeletePartition();
+nvmeStatus_t nvmeListPartitions();
 
-nvmeStatus_t nvmeWriteNamespaceLba(uint32_t ns, lbaRange_t lbaRange);
-nvmeStatus_t nvmeReadNamespaceLba(uint32_t ns, lbaRange_t lbaRange);
+nvmeStatus_t nvmeWritePartitionLba(uint32_t ns, lbaRange_t lbaRange);
+nvmeStatus_t nvmeReadPartitionLba(uint32_t ns, lbaRange_t lbaRange);
 
 
 #endif

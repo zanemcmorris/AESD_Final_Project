@@ -9,6 +9,8 @@
 
 #include <stdint.h>
 
+#define MAX_PARTITIONS (32)
+
 typedef enum{
     ERROR_NONE = 0,
     ERROR_STATE = -1,

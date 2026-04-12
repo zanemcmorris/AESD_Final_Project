@@ -11,14 +11,27 @@ TARGET ?= aesdsocket
 # Where you installed libnvme
 LIBNVME_PREFIX ?= ../libnvme/install
 
+PARTED_LOCAL_INC ?= ../parted/include
+
+PARTED_LIBDIR ?= ../parted/libparted/.libs
+
+# Directory containing libparted.pc
+PARTED_PC_DIR ?= ../parted
+
 # Let pkg-config find libnvme.pc
 LIBNVME_PKGCONFIG := $(LIBNVME_PREFIX)/lib/pkgconfig:$(LIBNVME_PREFIX)/lib64/pkgconfig
 
 NVME_CFLAGS := $(shell PKG_CONFIG_PATH=$(LIBNVME_PKGCONFIG):$(PKG_CONFIG_PATH) $(PKG_CONFIG) --cflags libnvme)
 NVME_LIBS   := $(shell PKG_CONFIG_PATH=$(LIBNVME_PKGCONFIG):$(PKG_CONFIG_PATH) $(PKG_CONFIG) --libs libnvme)
 
-CFLAGS += $(NVME_CFLAGS)
-LDLIBS += $(NVME_LIBS) -lpthread -lrt
+# Let pkg-config find libparted.pc
+PARTED_PKGCONFIG := $(PARTED_PC_DIR):$(PKG_CONFIG_PATH)
+
+PARTED_CFLAGS := $(shell PKG_CONFIG_PATH=$(PARTED_PKGCONFIG) $(PKG_CONFIG) --cflags libparted)
+PARTED_LIBS   := $(shell PKG_CONFIG_PATH=$(PARTED_PKGCONFIG) $(PKG_CONFIG) --libs libparted)
+
+CFLAGS += $(NVME_CFLAGS) $(PARTED_CFLAGS) -I$(PARTED_LOCAL_INC)
+LDLIBS += $(NVME_LIBS) $(PARTED_LIBDIR)/libparted.a -lpthread -lrt -ldevmapper -luuid
 
 BINDIR := bin
 OBJS := $(BINDIR)/aesdsocket.o \
@@ -41,8 +54,14 @@ $(BINDIR)/%.o: %.c | $(BINDIR)
 
 print-vars:
 	@echo "CC=$(CC)"
+	@echo "CFLAGS=$(CFLAGS)"
+	@echo "LDLIBS=$(LDLIBS)"
 	@echo "NVME_CFLAGS=$(NVME_CFLAGS)"
 	@echo "NVME_LIBS=$(NVME_LIBS)"
+	@echo "PARTED_CFLAGS=$(PARTED_CFLAGS)"
+	@echo "PARTED_LIBS=$(PARTED_LIBS)"
+	@echo "PARTED_LOCAL_INC=$(PARTED_LOCAL_INC)"
+	@echo "PARTED_PC_DIR=$(PARTED_PC_DIR)"
 
 clean:
 	rm -rf $(BINDIR) *.out $(TARGET)
