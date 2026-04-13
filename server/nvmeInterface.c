@@ -102,7 +102,8 @@ nvmeStatus_t nvmeGetStatus(void)
         return NVME_STATUS_NOT_FOUND;
     }
 
-    nvmeCreatePartition(1024);
+    // nvmeCreatePartition(1024);
+    // nvmeDeletePartition(7);
     // nvmeListPartitions();
     // nvmeListNamespace();
 
@@ -261,7 +262,54 @@ nvmeStatus_t nvmeCreatePartition(uint32_t size){
  * @return Returns NVME_STATUS_ERROR if namespace doesn't exist or cannot be deleted
  *         Otherwise returns NVME_STATUS_OK if operation could be completed
  */
-nvmeStatus_t nvmeDeletePartition(){
+nvmeStatus_t nvmeDeletePartition(int partNumber){
+
+    int rc = 0;
+    PedDevice * dev = NULL;
+    const char *devicePath = "/dev/nvme0n1"; // TODO: Update with known/gathered path.
+    PedPartition * partToDelete = NULL;
+
+    dev = ped_device_get(devicePath);
+    if(dev == NULL){
+        perror("ped_device_get failed");
+        return NVME_STATUS_NOT_FOUND;
+    }
+
+    rc = ped_device_open(dev);
+    if(rc == 0){
+        perror("ped_device_open");
+        return NVME_STATUS_ERROR;
+    }
+
+    PedDisk* disk = ped_disk_new(dev);
+    if(!disk){
+        perror("ped_disk_new");
+        return NVME_STATUS_ERROR;
+    }
+
+    partToDelete = ped_disk_get_partition(disk, partNumber);
+    if(partToDelete == NULL){
+        perror("ped_disk_get_partition");
+        return NVME_STATUS_INPUT;
+    }
+
+    rc = ped_disk_delete_partition(disk, partToDelete);
+    if(rc == 0){
+        perror("ped_disk_delete_partition");
+    }
+
+    rc = ped_disk_commit_to_dev(disk);
+    if(rc == 0){
+        perror("ped_disk_commit_to_dev");
+        return NVME_STATUS_ERROR;
+    }
+
+    rc = ped_disk_commit_to_os(disk);
+    if(rc == 0){
+        perror("ped_disk_commit_to_os");
+        return NVME_STATUS_ERROR;
+    }
+
     return NVME_STATUS_OK;
 }
 
