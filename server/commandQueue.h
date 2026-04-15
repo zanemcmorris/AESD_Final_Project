@@ -47,8 +47,7 @@ typedef enum{
 typedef struct{
     userCommandType_t userCommandType;
     ioType_t ioType;
-    uint32_t namespace;
-    uint32_t lba;
+    uint32_t sector;
     // File used to either write to the drive, or to store retrieved data. Optional Argument
     char * pathToFile;
     uint32_t pathToFileLength;

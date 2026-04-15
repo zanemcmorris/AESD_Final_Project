@@ -19,6 +19,9 @@ typedef enum{
     ERROR_EMPTY_QUEUE = -4,
     ERROR_RE_INIT = -5,
     ERROR_NO_INIT = -6,
+    ERROR_FULL_QUEUE = -7,
+    ERROR_NOT_SUPPORTED = -8,
+    ERROR_GENERAL = -9,
 }error_t;
 
 typedef enum{
