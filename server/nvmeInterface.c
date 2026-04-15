@@ -11,6 +11,7 @@
 #include <nvme/tree.h>
 #include <nvme/types.h>
 #include <parted/parted.h>
+#include <math.h>
 
 #include <endian.h>
 
@@ -102,11 +103,29 @@ nvmeStatus_t nvmeGetStatus(void)
         return NVME_STATUS_NOT_FOUND;
     }
 
-    // nvmeCreatePartition(1024);
+    uint8_t newPartNumber = 6;
+    // nvmeCreatePartition(1024, &newPartNumber);
     // nvmeDeletePartition(7);
     // nvmeListPartitions();
     // nvmeListNamespace();
+    // TODO: Write to part[lba]
 
+    printf("new part @ %d\n", newPartNumber);
+    char testData[512] = "helpthereissomethinginhere!";
+
+    // PedDevice *dev = ped_device_get("/dev/nvme0n1");
+    // if(dev == NULL){
+    //     perror("ped_device_get failed");
+    //     return NVME_STATUS_NOT_FOUND;
+    // }
+    // int sectorSize = dev->sector_size;
+
+    nvmeWritePartitionSector(newPartNumber, 0, testData, 512);
+    printf("wrote data?\n");
+    char retData[512] = {0};
+    nvmeReadPartitionSector(newPartNumber, 0, retData, 512);
+    retData[511] = 0;
+    printf("Got %s from the drive\n", retData);
     return NVME_STATUS_OK;
 }
 
@@ -160,9 +179,10 @@ nvmeStatus_t nvmeListPartitions(){
 /**
  * @brief Create a new NVME namespace
  * @param size number of sectors in partition
+ * @param newPartNumber pointer to return newpartitionnumber
  * @return nvmeStatus_t
  */
-nvmeStatus_t nvmeCreatePartition(uint32_t size){
+nvmeStatus_t nvmeCreatePartition(uint32_t size, uint8_t* newPartNumber){
 
     int rc = 0;
     PedDevice * dev = NULL;
@@ -219,7 +239,7 @@ nvmeStatus_t nvmeCreatePartition(uint32_t size){
         return NVME_STATUS_INPUT;
     }
      
-    PedPartition *newPart = ped_partition_new(disk, PED_PARTITION_NORMAL, fsType, sectorStart, sectorStart + size);
+    PedPartition *newPart = ped_partition_new(disk, PED_PARTITION_NORMAL, fsType, sectorStart, sectorStart + size - 1);
     if(newPart == NULL){
         perror("ped_partition_new");
         goto createParitionError;
@@ -247,6 +267,8 @@ nvmeStatus_t nvmeCreatePartition(uint32_t size){
         perror("ped_disk_commit_to_os");
         goto createParitionError;
     }
+
+    *newPartNumber = newPart->num;
 
     return NVME_STATUS_OK;
 
@@ -298,15 +320,9 @@ nvmeStatus_t nvmeDeletePartition(int partNumber){
         perror("ped_disk_delete_partition");
     }
 
-    rc = ped_disk_commit_to_dev(disk);
+    rc = ped_disk_commit(disk);
     if(rc == 0){
         perror("ped_disk_commit_to_dev");
-        return NVME_STATUS_ERROR;
-    }
-
-    rc = ped_disk_commit_to_os(disk);
-    if(rc == 0){
-        perror("ped_disk_commit_to_os");
         return NVME_STATUS_ERROR;
     }
 
@@ -352,13 +368,130 @@ nvmeStatus_t nvmeListNamespace(){
 }
 
 /**
- * @brief Usercommand to write an LBA range in a namespace with some information
- * TODO: Needs more inputs and implementation.
+ * @brief Usercommand to write to a sector(s) with data contained in buffer
+ * @param partNumber Partition number to write to. Must exist already
+ * @param sectorNumber Sector number within the partition to write to. Must be within its range.
+ * @param buffer Data to write to partition[sector]
+ * @param length Length of the data to write to the sector. Must be a multiple of sector size.
+ * @return nvmeStatus_t indicating success or failure of operation.
  */
-nvmeStatus_t nvmeWritePartitionLba(uint32_t ns, lbaRange_t lbaRange){
+nvmeStatus_t nvmeWritePartitionSector(uint32_t partNumber, uint32_t sectorNumber, char* buffer, size_t length){
+    int rc = 0;
+    PedDevice * dev = NULL;
+    const char *devicePath = "/dev/nvme0n1"; // TODO: Update with known/gathered path.
+    PedPartition * partToWrite = NULL;
+
+    dev = ped_device_get(devicePath);
+    if(dev == NULL){
+        perror("ped_device_get failed");
+        return NVME_STATUS_NOT_FOUND;
+    }
+
+    rc = ped_device_open(dev);
+    if(rc == 0){
+        perror("ped_device_open");
+        return NVME_STATUS_ERROR;
+    }
+
+    PedDisk* disk = ped_disk_new(dev);
+    if(!disk){
+        perror("ped_disk_new");
+        return NVME_STATUS_ERROR;
+    }
+
+    partToWrite = ped_disk_get_partition(disk, partNumber);
+    if(partToWrite == NULL){
+        printf("Specified partition does not exist.\n");
+        ped_disk_destroy(disk);
+        ped_device_close(dev);
+        return NVME_STATUS_INPUT;
+    }    
+    
+    printf("writing geom %lld %lld %lld\n", partToWrite->geom.start, partToWrite->geom.length, partToWrite->geom.end);
+    int sectorCount = 1;
+
+    rc = ped_geometry_write(&(partToWrite->geom), buffer, 0, sectorCount);
+    if(rc == 0)
+    {
+        perror("ped_geometry_write");
+        return NVME_STATUS_ERROR;
+    }
+
+    rc = ped_geometry_sync(&(partToWrite->geom));
+    if(rc == 0)
+    {
+        perror("ped_geometry_sync");
+        return NVME_STATUS_ERROR;
+    }
+
+
+    // ped_partition_destroy(partToWrite);
+    // ped_disk_destroy(disk);
+    ped_device_close(dev);
     return NVME_STATUS_OK;
 }
-nvmeStatus_t nvmeReadPartitionLba(uint32_t ns, lbaRange_t lbaRange){
+
+/**
+ * @brief Usercommand to read from a sector(s) and return data in buffer
+ * @param partNumber Partition number to read from. Must exist already
+ * @param sectorNumber Sector number within the partition to read from. Must be within its range.
+ * @param buffer Return location for data read from part.
+ * @param length Length of the data to read from the sector in bytes. Must be a multiple of sector size.
+ * @return nvmeStatus_t indicating success or failure of operation.
+ */
+nvmeStatus_t nvmeReadPartitionSector(uint32_t partNumber, uint32_t sectorNumber, char* buffer, size_t length){
+
+    int rc = 0;
+    PedDevice * dev = NULL;
+    const char *devicePath = "/dev/nvme0n1"; // TODO: Update with known/gathered path.
+    PedPartition * partToRead = NULL;
+
+    dev = ped_device_get(devicePath);
+    if(dev == NULL){
+        perror("ped_device_get failed");
+        return NVME_STATUS_NOT_FOUND;
+    }
+
+    rc = ped_device_open(dev);
+    if(rc == 0){
+        perror("ped_device_open");
+        return NVME_STATUS_ERROR;
+    }
+
+    PedDisk* disk = ped_disk_new(dev);
+    if(!disk){
+        perror("ped_disk_new");
+        return NVME_STATUS_ERROR;
+    }
+
+    partToRead = ped_disk_get_partition(disk, partNumber);
+    if(partToRead == NULL){
+        printf("Specified partition does not exist.\n");
+        ped_disk_destroy(disk);
+        ped_device_close(dev);
+        return NVME_STATUS_INPUT;
+    }
+
+    // TODO: Verify length and sectorcount allign. 
+    int sectorCount = 1;
+
+    rc = ped_geometry_read(&(partToRead->geom), buffer, 0, sectorCount);
+    if(rc == 0)
+    {
+        perror("ped_geometry_write");
+        return NVME_STATUS_ERROR;
+    }
+
+    rc = ped_geometry_sync(&(partToRead->geom));
+    if(rc == 0)
+    {
+        perror("ped_geometry_sync");
+        return NVME_STATUS_ERROR;
+    }
+
+    // ped_partition_destroy(partToRead);
+    // ped_disk_destroy(disk);
+    ped_device_close(dev);
     return NVME_STATUS_OK;
 }
 

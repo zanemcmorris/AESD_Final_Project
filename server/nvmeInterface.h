@@ -23,12 +23,11 @@ typedef enum{
 nvmeStatus_t nvmeGetStatus();
 
 nvmeStatus_t nvmeListNamespace();
-nvmeStatus_t nvmeCreatePartition(uint32_t size);
+nvmeStatus_t nvmeCreatePartition(uint32_t size, uint8_t * newPart);
 nvmeStatus_t nvmeDeletePartition(int partNum);
 nvmeStatus_t nvmeListPartitions();
 
-nvmeStatus_t nvmeWritePartitionLba(uint32_t ns, lbaRange_t lbaRange);
-nvmeStatus_t nvmeReadPartitionLba(uint32_t ns, lbaRange_t lbaRange);
-
+nvmeStatus_t nvmeWritePartitionSector(uint32_t part, uint32_t sectorNumber, char* buffer, size_t length);
+nvmeStatus_t nvmeReadPartitionSector(uint32_t part, uint32_t sectorNumber, char* buffer, size_t length);
 
 #endif
