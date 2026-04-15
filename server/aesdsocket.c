@@ -365,6 +365,40 @@ int sendFullLogWExistingFD(int newfd, int logfd)
 }
 
 /**
+ * @brief Send command usage to client
+ * @param clientfd Client fd to send information to
+ */
+static void sendCommandUsage(int clientfd){
+    char * str = "----- Start Command Usage -----\n\0";
+    send(clientfd, str, strlen(str), 0);
+
+    str = "status -- prints status of drive\n\0";
+    send(clientfd, str, strlen(str), 0);
+
+    str = "listparts -- list active partitions on the drive\n\0";
+    send(clientfd, str, strlen(str), 0);
+
+    str = "mkpart <size_in_sectors> \n\0";
+    send(clientfd, str, strlen(str), 0);
+
+    str = "rmpart <part_number> \n\0";
+    send(clientfd, str, strlen(str), 0);
+    
+    str = "write <data> <part> <offset> -- writes <data> to <part>\n\0";
+    send(clientfd, str, strlen(str), 0);
+
+    str = "read <part> <offset> <num_sectors> -- reads <num_sectors> from <part> \n\0";
+    send(clientfd, str, strlen(str), 0);
+
+    str = "quit --  ends session\n\0";
+    send(clientfd, str, strlen(str), 0);
+
+    str = "----- End Command usage -----\n\n\0";
+    send(clientfd, str, strlen(str), 0);
+    
+}
+
+/**
  * @brief Pthread recieving thread for multi-threaded server. Spawned on each new connection
  * @arg Pointer to linkedlist node containing thread-specific information  
  * @return None
@@ -373,81 +407,103 @@ void* repsondingThread(void* arg)
 {
     slist_data_t *myNodeData = (slist_data_t*) (arg);
     int clientFD = myNodeData->clientfd;
-    const char* welcomeString = "Welcome to the NVME command server!\n";
+    const char* welcomeString = "Welcome to the NVME command server!\n\n\n";
     send(clientFD, welcomeString, strlen(welcomeString), 0);
+    sendCommandUsage(clientFD);
+    bool threadActive = true;
 
-    // Set up to recv from client
-    size_t bufferCapacity = RECV_BUFFER_LENGTH_BYTES;
-    char *buffer = (char*) malloc(bufferCapacity);
-    memset(buffer, 0, bufferCapacity);
-    int totalBytesRecvd = 0; // Reset num bytes received for this message
-    bool failedToRead = false;
-
-    // Receive all the bytes now
-    while(1)
+    while(threadActive && !endProgram)
     {
-        // If received bytes on last ittr was at buffer capacity, then double capacity and keep going
-        if(totalBytesRecvd == bufferCapacity){
-            bufferCapacity *= 2;
-            char *temp = realloc(buffer, bufferCapacity);
-            if(temp == NULL){
+        // Set up to recv from client
+        size_t bufferCapacity = RECV_BUFFER_LENGTH_BYTES;
+        char *buffer = (char*) malloc(bufferCapacity);
+        memset(buffer, 0, bufferCapacity);
+        int totalBytesRecvd = 0; // Reset num bytes received for this message
+        bool failedToRead = false;
+
+        // Receive all the bytes now
+        while(1)
+        {
+            // If received bytes on last ittr was at buffer capacity, then double capacity and keep going
+            if(totalBytesRecvd == bufferCapacity){
+                bufferCapacity *= 2;
+                char *temp = realloc(buffer, bufferCapacity);
+                if(temp == NULL){
+                    free(buffer);
+                    // toss this message and go next if malloc failed 
+                    failedToRead = true;
+                    printf("Failed to malloc large enough buffer.\n");
+                    break;
+                }
+
+                buffer = temp;
+                // printf("Doubled buffer size. Now %ld bytes\n", bufferCapacity);
+            }
+
+            // Recieve n bytes from the client
+            int n = recv(clientFD, buffer + totalBytesRecvd, bufferCapacity - totalBytesRecvd, 0);
+            if(n < 0){
+                // Error on recv
                 free(buffer);
-                // toss this message and go next if malloc failed 
-                failedToRead = true;
-                printf("Failed to malloc large enough buffer.\n");
+                buffer = NULL;
+                syslog(LOG_DEBUG, "recv failed");
+                perror("recv failed");
+                return NULL;
+            }
+
+            if(n == 0){
+                // We read all the data out of the socket
+                threadActive = false;
                 break;
             }
 
-            buffer = temp;
-            // printf("Doubled buffer size. Now %ld bytes\n", bufferCapacity);
+            totalBytesRecvd += n;
+            // printf("Just read %d bytes, making total of %d\n", n, totalBytesRecvd);
+
+            // Only stop loop if the final char is a newline
+            if(buffer[totalBytesRecvd-1] == '\n'){
+                break;
+            }
         }
 
-        // Recieve n bytes from the client
-        int n = recv(clientFD, buffer + totalBytesRecvd, bufferCapacity - totalBytesRecvd, 0);
-        if(n < 0){
-            // Error on recv
-            free(buffer);
-            buffer = NULL;
-            syslog(LOG_DEBUG, "recv failed");
-            perror("recv failed");
-            return NULL;
+        // bool wasIoctlCommand = false;
+
+        // Trap for failed to read to hit the cleanup and return step at the end of function
+        if(!failedToRead){
+            // If we read completely, write message to the log, free the buffer and echo back log
+            // buffer[totalBytesRecvd] = 0; // Set null-terminator
+            // printf("new buffer: %s", buffer);
+            syslog(LOG_DEBUG, "Recvd string: %s", buffer);
+
+                // TODO: Call into command server here.
+                if(strncmp(buffer, "?\n", sizeof("?\n")) == 0){
+                    sendCommandUsage(clientFD);
+                } 
+                else if(strncmp(buffer, "status\n", sizeof("status\n")) == 0)
+                {
+                    nvmeGetStatus();
+                }
+                else if(strncmp(buffer, "listparts\n", sizeof("listparts\n")) == 0)
+                {
+                    printf("listing parts\n");
+                    // listparts
+                }
+                else if(strncmp(buffer, "quit\n", sizeof("quit\n")) == 0){
+                    threadActive = false;
+                }
+                // else if (strncmp(buffer, "mkpart"))bufferCapacity
+
+
         }
 
-        if(n == 0){
-            // We read all the data out of the socket
-            break;
-        }
-
-        totalBytesRecvd += n;
-        // printf("Just read %d bytes, making total of %d\n", n, totalBytesRecvd);
-
-        // Only stop loop if the final char is a newline
-        if(buffer[totalBytesRecvd-1] == '\n'){
-            break;
-        }
+        
     }
-
-    // bool wasIoctlCommand = false;
-
-    // Trap for failed to read to hit the cleanup and return step at the end of function
-    if(!failedToRead){
-        // If we read completely, write message to the log, free the buffer and echo back log
-        // buffer[totalBytesRecvd] = 0; // Set null-terminator
-        // printf("new buffer: %s", buffer);
-        syslog(LOG_DEBUG, "Recvd string: %s", buffer);
-
-            // TODO: Call into command server here.
-
-    }
-
     shutdown(clientFD, SHUT_RDWR);
     close(clientFD);
     clientFD = -1;
     atomic_store(&myNodeData->isThreadComplete, true);
     syslog(LOG_DEBUG, "Thread cleaned up");
-
     return NULL;
-
 }
 
 /**
