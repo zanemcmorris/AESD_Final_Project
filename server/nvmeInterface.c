@@ -80,7 +80,7 @@ nvmeStatus_t nvmeGetStatus(void)
 
                 n = nvme_subsystem_first_ns(s);
                 if (!n){
-                    printf("No namespace found\n");
+                    printf("No namespace found in subsystem\n");
                 }
 
                 nvme_ctrl_for_each_ns(c, n){

@@ -17,6 +17,7 @@
 #include <sys/time.h>
 #include <stdatomic.h>
 #include <time.h>
+#include <stdarg.h>
 // #include "../aesd-char-driver/aesd_ioctl.h"
 // New includes for final project
 #include "commandQueue.h"
@@ -375,7 +376,7 @@ static void sendCommandUsage(int clientfd){
     str = "status -- prints status of drive\n\0";
     send(clientfd, str, strlen(str), 0);
 
-    str = "listparts -- list active partitions on the drive\n\0";
+    str = "listparts/ls -- list active partitions on the drive\n\0";
     send(clientfd, str, strlen(str), 0);
 
     str = "mkpart <size_in_sectors> \n\0";
@@ -396,6 +397,33 @@ static void sendCommandUsage(int clientfd){
     str = "----- End Command usage -----\n\n\0";
     send(clientfd, str, strlen(str), 0);
     
+}
+
+/**
+ * @brief Helper for sending a string to a socket without having to mess with strlen
+ */
+static inline int sendOnSocketf(int sockfd, const char *fmt, ...)
+{
+    if (sockfd < 0 || fmt == NULL) {
+        return -1;
+    }
+
+    char buffer[512];
+    va_list args;
+
+    va_start(args, fmt);
+    int len = vsnprintf(buffer, sizeof(buffer), fmt, args);
+    va_end(args);
+
+    if (len < 0) {
+        return -1;
+    }
+
+    if (send(sockfd, buffer, strnlen(buffer, sizeof(buffer)), 0) < 0) {
+        return -1;
+    }
+
+    return 0;
 }
 
 /**
@@ -420,6 +448,7 @@ void* repsondingThread(void* arg)
         memset(buffer, 0, bufferCapacity);
         int totalBytesRecvd = 0; // Reset num bytes received for this message
         bool failedToRead = false;
+        int rc = 0;
 
         // Receive all the bytes now
         while(1)
@@ -474,25 +503,83 @@ void* repsondingThread(void* arg)
             // buffer[totalBytesRecvd] = 0; // Set null-terminator
             // printf("new buffer: %s", buffer);
             syslog(LOG_DEBUG, "Recvd string: %s", buffer);
+            char *saveptr = NULL;
+            char *cmd = strtok_r(buffer, " \t\r\n", &saveptr);
+            char *arg1 = strtok_r(NULL, " \t\r\n", &saveptr);
+            char *arg2 = strtok_r(NULL, " \t\r\n", &saveptr);
+            char *arg3 = strtok_r(NULL, " \t\r\n", &saveptr);
+            char *extra = strtok_r(NULL, " \t\r\n", &saveptr);
+
+            if(cmd == NULL){
+                continue;
+            }
+
+            printf("cmd: %s | arg1:%s | arg2:%s | arg3:%s | extra:%s\n", cmd, arg1, arg2, arg3, extra);
 
                 // TODO: Call into command server here.
-                if(strncmp(buffer, "?\n", sizeof("?\n")) == 0){
+                if(strncmp(cmd, "?", sizeof("?")) == 0 || strncmp(cmd, "help", sizeof("help")) == 0){
                     sendCommandUsage(clientFD);
                 } 
-                else if(strncmp(buffer, "status\n", sizeof("status\n")) == 0)
+                else if(strncmp(cmd, "status", sizeof("status")) == 0)
                 {
+                    int savedfd = dup(STDOUT_FILENO);
+                    dup2(clientFD, STDOUT_FILENO);
                     nvmeGetStatus();
+                    dup2(savedfd, STDOUT_FILENO); // hack to not have to re-write the getStatus function
                 }
-                else if(strncmp(buffer, "listparts\n", sizeof("listparts\n")) == 0)
+                else if(strncmp(cmd, "listparts", sizeof("listparts")) == 0 || strncmp(cmd, "ls", sizeof("ls")) == 0)
                 {
                     printf("listing parts\n");
+
+                    int savedfd = dup(STDOUT_FILENO);
+                    dup2(clientFD, STDOUT_FILENO);
+                    rc = nvmeListPartitions();
+                    dup2(savedfd, STDOUT_FILENO); // hack to not have to re-write the nvmeListPartitions function
+
+                    if(rc != NVME_STATUS_OK){
+                        sendOnSocketf(clientFD, "Encountered and error while listing drive partitions.\n");
+                    }
                     // listparts
                 }
-                else if(strncmp(buffer, "quit\n", sizeof("quit\n")) == 0){
+                else if(strncmp(cmd, "quit", sizeof("quit")) == 0){
                     threadActive = false;
-                }
-                // else if (strncmp(buffer, "mkpart"))bufferCapacity
+                } else if (strncmp(cmd, "mkpart", sizeof("mkpart")) == 0){
+                    printf("mkpart detected\n");
+                    if(arg1 == NULL){
+                        sendOnSocketf(clientFD, "expected second argument for size of new partition.\n");
+                    }
+                    int newPartSize = atoi(arg1);
+                    uint8_t newPartIndex = 0;
+                    if(newPartSize > 0){
+                        rc = nvmeCreatePartition(newPartSize, &newPartIndex);
+                        if(rc != NVME_STATUS_OK){
+                            sendOnSocketf(clientFD, "failed to create partition.\n");
+                        } else {
+                            sendOnSocketf(clientFD, "created part with number %d\n", newPartIndex);
+                        }
+                    } else {
+                        sendOnSocketf(clientFD, "expected greater than zero argument for new partition size.\n");
+                    }
+                    
+                    
+                } else if (strncmp(cmd, "rmpart", sizeof("rmpart") == 0)){
+                    printf("rmpart received\n");
 
+                    if(arg1 == NULL){
+                        sendOnSocketf(clientFD, "expected second argument for number of partition to delete\n");
+                    }
+                    int partToDel = atoi(arg1);
+                    if(partToDel > 0){
+                        rc = nvmeDeletePartition(partToDel);
+                        if(rc != NVME_STATUS_OK){
+                            sendOnSocketf(clientFD, "failed to delete partition.\n");
+                        } else {
+                            sendOnSocketf(clientFD, "deleted part with number %d\n", partToDel);
+                        }
+                    } else {
+                        sendOnSocketf(clientFD, "expected greater than zero argument for partition to delete.\n");
+                    }
+                }
 
         }
 
