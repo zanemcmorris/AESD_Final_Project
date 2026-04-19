@@ -18,6 +18,8 @@
 #include <stdatomic.h>
 #include <time.h>
 #include <stdarg.h>
+#include <ctype.h>
+#include <stddef.h>
 // #include "../aesd-char-driver/aesd_ioctl.h"
 // New includes for final project
 #include "commandQueue.h"
@@ -365,12 +367,57 @@ int sendFullLogWExistingFD(int newfd, int logfd)
     return 0;
 }
 
+
+/**
+ * @brief print hex bytes in hexdump style to stdout
+ * @param data Pointer to data to print
+ * @param len length of buffer in bytes
+ * @return void
+ */
+void hexDump(const void *data, size_t len)
+{
+    const unsigned char *buf = (const unsigned char *)data;
+
+    if (buf == NULL) {
+        printf("(null)\n");
+        return;
+    }
+
+    for (size_t i = 0; i < len; i += 16) {
+        printf("%08zx  ", i);
+
+        for (size_t j = 0; j < 16; j++) {
+            if (i + j < len) {
+                printf("%02X ", buf[i + j]);
+            } else {
+                printf("   ");
+            }
+
+            if (j == 7) {
+                printf(" ");
+            }
+        }
+
+        printf(" |");
+
+        for (size_t j = 0; j < 16 && i + j < len; j++) {
+            unsigned char c = buf[i + j];
+            printf("%c", isprint(c) ? c : '.');
+        }
+
+        printf("|\n");
+    }
+}
+
 /**
  * @brief Send command usage to client
  * @param clientfd Client fd to send information to
  */
 static void sendCommandUsage(int clientfd){
     char * str = "----- Start Command Usage -----\n\0";
+    send(clientfd, str, strlen(str), 0);
+
+    str = "help/? -- prints this command usage screen\n\0";
     send(clientfd, str, strlen(str), 0);
 
     str = "status -- prints status of drive\n\0";
@@ -408,7 +455,7 @@ static inline int sendOnSocketf(int sockfd, const char *fmt, ...)
         return -1;
     }
 
-    char buffer[512];
+    char buffer[1024];
     va_list args;
 
     va_start(args, fmt);
@@ -579,6 +626,92 @@ void* repsondingThread(void* arg)
                     } else {
                         sendOnSocketf(clientFD, "expected greater than zero argument for partition to delete.\n");
                     }
+                } else if(strncmp(cmd, "write", sizeof("write")) == 0){
+                    printf("got write\n");
+                    //    str = "write <data> <part> <offset> -- writes <data> to <part>\n\0";
+                    int partToWrite = 0;
+                    if(arg2 == NULL){
+                        sendOnSocketf(clientFD, "Expected a partition to write to. Try again.\n");
+                        continue;
+                    } else {
+                        partToWrite = atoi(arg2);
+                    }
+
+
+
+                    int sectorOffset = 0;
+                    if(arg3 == NULL){
+                        sendOnSocketf(clientFD, "No socket offset received. Assuming 0.\n");
+                        sectorOffset = 0;
+                    } else {
+                        sectorOffset = atoi(arg3);
+                    }
+                    sendOnSocketf(clientFD, "Writing %lld bytes to part %d at sector %d\n", strlen(arg1), partToWrite, sectorOffset);
+
+                    rc = nvmeWritePartitionSector(partToWrite, sectorOffset, arg1, strlen(arg1));
+                    if(rc != NVME_STATUS_OK){
+                        sendOnSocketf(clientFD, "An error occured during the write operation.\n");
+                    }
+                } else if(strncmp(cmd, "read", sizeof("read")) == 0){
+                    bool printAsHex = false;
+                    //"read <part> <offset> <num_sectors>
+
+                    int partToRead = 0;
+                    if(arg1 == NULL){
+                        sendOnSocketf(clientFD, "Expected a partition to write to. Try again.\n");
+                        continue;
+                    } else {
+                        partToRead = atoi(arg1);
+                    }
+
+
+
+                    int sectorOffset = 0;
+                    if(arg2 == NULL){
+                        sendOnSocketf(clientFD, "No socket offset received. Assuming 0.\n");
+                        sectorOffset = 0;
+                    } else {
+                        sectorOffset = atoi(arg2);
+                    }
+
+                    int sectorsToRead = 0;
+                    if(arg3 == NULL){
+                        sendOnSocketf(clientFD, "Expected a number of sectors to read. Try again.\n");
+                        continue;
+                    } else {
+                        sectorsToRead = atoi(arg3);
+                    }
+
+                    if(extra != NULL){
+                        if (strncmp(extra, "-b", sizeof("-b")) == 0){
+                            // -b flag was present
+                            // Print as bytes, not ascii
+                            printAsHex = true;
+                        }
+                    }
+
+                    size_t readBufferSize = sectorsToRead * 512; // TODO: replace 512 with sector size.
+                    char *readBuffer = malloc(sizeof(char) * readBufferSize); 
+                    sendOnSocketf(clientFD, "Reading %lld bytes from part %d at sector %d\n", readBufferSize, partToRead, sectorOffset);
+                    rc = nvmeReadPartitionSector(partToRead, sectorOffset, readBuffer, readBufferSize);
+                    if(rc != NVME_STATUS_OK){
+                        sendOnSocketf(clientFD, "Encountered an error during read\n");
+                        free(readBuffer);
+                        continue;
+                    }
+                    readBuffer[readBufferSize - 1] = 0; // Null terminate
+
+                    if(printAsHex){
+                        int savedfd = dup(STDOUT_FILENO);
+                        dup2(clientFD, STDOUT_FILENO);
+                        hexDump(readBuffer, readBufferSize);
+                        dup2(savedfd, STDOUT_FILENO); // hack to not have to re-write hexdump function
+
+                    } else {
+                        sendOnSocketf(clientFD, "Read %s from socket\n", readBuffer);
+                    }
+
+                    free(readBuffer);
                 }
 
         }
