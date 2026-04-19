@@ -103,29 +103,6 @@ nvmeStatus_t nvmeGetStatus(void)
         return NVME_STATUS_NOT_FOUND;
     }
 
-    uint8_t newPartNumber = 6;
-    // nvmeCreatePartition(1024, &newPartNumber);
-    // nvmeDeletePartition(7);
-    // nvmeListPartitions();
-    // nvmeListNamespace();
-    // TODO: Write to part[lba]
-
-    printf("new part @ %d\n", newPartNumber);
-    char testData[512] = "helpthereissomethinginhere!";
-
-    // PedDevice *dev = ped_device_get("/dev/nvme0n1");
-    // if(dev == NULL){
-    //     perror("ped_device_get failed");
-    //     return NVME_STATUS_NOT_FOUND;
-    // }
-    // int sectorSize = dev->sector_size;
-
-    nvmeWritePartitionSector(newPartNumber, 0, testData, 512);
-    printf("wrote data?\n");
-    char retData[512] = {0};
-    nvmeReadPartitionSector(newPartNumber, 0, retData, 512);
-    retData[511] = 0;
-    printf("Got %s from the drive\n", retData);
     return NVME_STATUS_OK;
 }
 
@@ -427,7 +404,7 @@ nvmeStatus_t nvmeWritePartitionSector(uint32_t partNumber, uint32_t sectorNumber
 
     // ped_partition_destroy(partToWrite);
     // ped_disk_destroy(disk);
-    ped_device_close(dev);
+    // ped_device_close(dev);
     return NVME_STATUS_OK;
 }
 
@@ -469,11 +446,13 @@ nvmeStatus_t nvmeReadPartitionSector(uint32_t partNumber, uint32_t sectorNumber,
         printf("Specified partition does not exist.\n");
         ped_disk_destroy(disk);
         ped_device_close(dev);
-        return NVME_STATUS_INPUT;
+        return NVME_STATUS_PART_DNE;
     }
 
     // TODO: Verify length and sectorcount allign. 
-    int sectorCount = 1;
+    int sectorCount = (length / dev->sector_size);
+    printf("nvmeRead: reading %d sectors\n", sectorCount);
+    
 
     rc = ped_geometry_read(&(partToRead->geom), buffer, 0, sectorCount);
     if(rc == 0)
@@ -482,16 +461,16 @@ nvmeStatus_t nvmeReadPartitionSector(uint32_t partNumber, uint32_t sectorNumber,
         return NVME_STATUS_ERROR;
     }
 
-    rc = ped_geometry_sync(&(partToRead->geom));
-    if(rc == 0)
-    {
-        perror("ped_geometry_sync");
-        return NVME_STATUS_ERROR;
-    }
+    // rc = ped_geometry_sync(&(partToRead->geom));
+    // if(rc == 0)
+    // {
+    //     perror("ped_geometry_sync");
+    //     return NVME_STATUS_ERROR;
+    // }
 
     // ped_partition_destroy(partToRead);
     // ped_disk_destroy(disk);
-    ped_device_close(dev);
+    // ped_device_close(dev);
     return NVME_STATUS_OK;
 }
 

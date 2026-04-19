@@ -563,156 +563,166 @@ void* repsondingThread(void* arg)
 
             printf("cmd: %s | arg1:%s | arg2:%s | arg3:%s | extra:%s\n", cmd, arg1, arg2, arg3, extra);
 
-                // TODO: Call into command server here.
-                if(strncmp(cmd, "?", sizeof("?")) == 0 || strncmp(cmd, "help", sizeof("help")) == 0){
-                    sendCommandUsage(clientFD);
-                } 
-                else if(strncmp(cmd, "status", sizeof("status")) == 0)
-                {
-                    int savedfd = dup(STDOUT_FILENO);
-                    dup2(clientFD, STDOUT_FILENO);
-                    nvmeGetStatus();
-                    dup2(savedfd, STDOUT_FILENO); // hack to not have to re-write the getStatus function
+            // TODO: Call into command server here.
+            if(strncmp(cmd, "?", sizeof("?")) == 0 || strncmp(cmd, "help", sizeof("help")) == 0){
+                sendCommandUsage(clientFD);
+            }
+            else if(strncmp(cmd, "status", sizeof("status")) == 0)
+            {
+                int savedfd = dup(STDOUT_FILENO);
+                dup2(clientFD, STDOUT_FILENO);
+                nvmeGetStatus();
+                dup2(savedfd, STDOUT_FILENO); // hack to not have to re-write the getStatus function
+            }
+            else if(strncmp(cmd, "listparts", sizeof("listparts")) == 0 || strncmp(cmd, "ls", sizeof("ls")) == 0)
+            {
+                printf("listing parts\n");
+
+                int savedfd = dup(STDOUT_FILENO);
+                dup2(clientFD, STDOUT_FILENO);
+                rc = nvmeListPartitions();
+                dup2(savedfd, STDOUT_FILENO); // hack to not have to re-write the nvmeListPartitions function
+
+                if(rc != NVME_STATUS_OK){
+                    sendOnSocketf(clientFD, "Encountered and error while listing drive partitions.\n");
                 }
-                else if(strncmp(cmd, "listparts", sizeof("listparts")) == 0 || strncmp(cmd, "ls", sizeof("ls")) == 0)
-                {
-                    printf("listing parts\n");
-
-                    int savedfd = dup(STDOUT_FILENO);
-                    dup2(clientFD, STDOUT_FILENO);
-                    rc = nvmeListPartitions();
-                    dup2(savedfd, STDOUT_FILENO); // hack to not have to re-write the nvmeListPartitions function
-
-                    if(rc != NVME_STATUS_OK){
-                        sendOnSocketf(clientFD, "Encountered and error while listing drive partitions.\n");
-                    }
-                    // listparts
+                // listparts
+            }
+            else if(strncmp(cmd, "quit", sizeof("quit")) == 0){
+                threadActive = false;
+            } else if (strncmp(cmd, "mkpart", sizeof("mkpart")) == 0){
+                printf("mkpart received\n");
+                if(arg1 == NULL){
+                    sendOnSocketf(clientFD, "expected second argument for size of new partition.\n");
                 }
-                else if(strncmp(cmd, "quit", sizeof("quit")) == 0){
-                    threadActive = false;
-                } else if (strncmp(cmd, "mkpart", sizeof("mkpart")) == 0){
-                    printf("mkpart detected\n");
-                    if(arg1 == NULL){
-                        sendOnSocketf(clientFD, "expected second argument for size of new partition.\n");
-                    }
-                    int newPartSize = atoi(arg1);
-                    uint8_t newPartIndex = 0;
-                    if(newPartSize > 0){
-                        rc = nvmeCreatePartition(newPartSize, &newPartIndex);
-                        if(rc != NVME_STATUS_OK){
-                            sendOnSocketf(clientFD, "failed to create partition.\n");
-                        } else {
-                            sendOnSocketf(clientFD, "created part with number %d\n", newPartIndex);
-                        }
-                    } else {
-                        sendOnSocketf(clientFD, "expected greater than zero argument for new partition size.\n");
-                    }
-                    
-                    
-                } else if (strncmp(cmd, "rmpart", sizeof("rmpart") == 0)){
-                    printf("rmpart received\n");
-
-                    if(arg1 == NULL){
-                        sendOnSocketf(clientFD, "expected second argument for number of partition to delete\n");
-                    }
-                    int partToDel = atoi(arg1);
-                    if(partToDel > 0){
-                        rc = nvmeDeletePartition(partToDel);
-                        if(rc != NVME_STATUS_OK){
-                            sendOnSocketf(clientFD, "failed to delete partition.\n");
-                        } else {
-                            sendOnSocketf(clientFD, "deleted part with number %d\n", partToDel);
-                        }
-                    } else {
-                        sendOnSocketf(clientFD, "expected greater than zero argument for partition to delete.\n");
-                    }
-                } else if(strncmp(cmd, "write", sizeof("write")) == 0){
-                    printf("got write\n");
-                    //    str = "write <data> <part> <offset> -- writes <data> to <part>\n\0";
-                    int partToWrite = 0;
-                    if(arg2 == NULL){
-                        sendOnSocketf(clientFD, "Expected a partition to write to. Try again.\n");
-                        continue;
-                    } else {
-                        partToWrite = atoi(arg2);
-                    }
-
-
-
-                    int sectorOffset = 0;
-                    if(arg3 == NULL){
-                        sendOnSocketf(clientFD, "No socket offset received. Assuming 0.\n");
-                        sectorOffset = 0;
-                    } else {
-                        sectorOffset = atoi(arg3);
-                    }
-                    sendOnSocketf(clientFD, "Writing %lld bytes to part %d at sector %d\n", strlen(arg1), partToWrite, sectorOffset);
-
-                    rc = nvmeWritePartitionSector(partToWrite, sectorOffset, arg1, strlen(arg1));
+                int newPartSize = atoi(arg1);
+                uint8_t newPartIndex = 0;
+                if(newPartSize > 0){
+                    rc = nvmeCreatePartition(newPartSize, &newPartIndex);
                     if(rc != NVME_STATUS_OK){
-                        sendOnSocketf(clientFD, "An error occured during the write operation.\n");
-                    }
-                } else if(strncmp(cmd, "read", sizeof("read")) == 0){
-                    bool printAsHex = false;
-                    //"read <part> <offset> <num_sectors>
-
-                    int partToRead = 0;
-                    if(arg1 == NULL){
-                        sendOnSocketf(clientFD, "Expected a partition to write to. Try again.\n");
-                        continue;
+                        sendOnSocketf(clientFD, "\nfailed to create partition.\n");
                     } else {
-                        partToRead = atoi(arg1);
+                        sendOnSocketf(clientFD, "\ncreated new partition with number %d\n", newPartIndex);
                     }
+                } else {
+                    sendOnSocketf(clientFD, "expected greater than zero argument for new partition size.\n");
+                }
+                
+                
+            } else if (strncmp(cmd, "rmpart", sizeof("rmpart")) == 0){
+                printf("rmpart received\n");
 
-
-
-                    int sectorOffset = 0;
-                    if(arg2 == NULL){
-                        sendOnSocketf(clientFD, "No socket offset received. Assuming 0.\n");
-                        sectorOffset = 0;
-                    } else {
-                        sectorOffset = atoi(arg2);
-                    }
-
-                    int sectorsToRead = 0;
-                    if(arg3 == NULL){
-                        sendOnSocketf(clientFD, "Expected a number of sectors to read. Try again.\n");
-                        continue;
-                    } else {
-                        sectorsToRead = atoi(arg3);
-                    }
-
-                    if(extra != NULL){
-                        if (strncmp(extra, "-b", sizeof("-b")) == 0){
-                            // -b flag was present
-                            // Print as bytes, not ascii
-                            printAsHex = true;
-                        }
-                    }
-
-                    size_t readBufferSize = sectorsToRead * 512; // TODO: replace 512 with sector size.
-                    char *readBuffer = malloc(sizeof(char) * readBufferSize); 
-                    sendOnSocketf(clientFD, "Reading %lld bytes from part %d at sector %d\n", readBufferSize, partToRead, sectorOffset);
-                    rc = nvmeReadPartitionSector(partToRead, sectorOffset, readBuffer, readBufferSize);
+                if(arg1 == NULL){
+                    sendOnSocketf(clientFD, "expected second argument for number of partition to delete\n");
+                }
+                int partToDel = atoi(arg1);
+                if(partToDel > 0){
+                    rc = nvmeDeletePartition(partToDel);
                     if(rc != NVME_STATUS_OK){
-                        sendOnSocketf(clientFD, "Encountered an error during read\n");
-                        free(readBuffer);
+                        sendOnSocketf(clientFD, "failed to delete partition.\n");
+                    } else {
+                        sendOnSocketf(clientFD, "deleted part with number %d\n", partToDel);
+                    }
+                } else {
+                    sendOnSocketf(clientFD, "expected greater than zero argument for partition to delete.\n");
+                }
+            } else if(strncmp(cmd, "write", sizeof("write")) == 0){
+                printf("got write\n");
+                //    str = "write <data> <part> <offset> -- writes <data> to <part>\n\0";
+                int partToWrite = 0;
+                if(arg2 == NULL){
+                    sendOnSocketf(clientFD, "Expected a partition to write to. Try again.\n");
+                    continue;
+                } else {
+                    partToWrite = atoi(arg2);
+                }
+
+
+
+                int sectorOffset = 0;
+                if(arg3 == NULL){
+                    sendOnSocketf(clientFD, "No socket offset received. Assuming 0.\n");
+                    sectorOffset = 0;
+                } else {
+                    sectorOffset = atoi(arg3);
+                }
+                sendOnSocketf(clientFD, "Writing %lld bytes to part %d at sector %d\n", strlen(arg1), partToWrite, sectorOffset);
+
+                rc = nvmeWritePartitionSector(partToWrite, sectorOffset, arg1, strlen(arg1));
+                if(rc != NVME_STATUS_OK){
+                    sendOnSocketf(clientFD, "An error occured during the write operation.\n");
+                }
+            } else if(strncmp(cmd, "read", sizeof("read")) == 0){
+                bool printAsHex = false;
+                //"read <part> <offset> <num_sectors>
+
+                int partToRead = 0;
+                if(arg1 == NULL){
+                    sendOnSocketf(clientFD, "Expected a partition to write to. Try again.\n");
+                    continue;
+                } else {
+                    partToRead = atoi(arg1);
+                }
+
+
+
+                int sectorOffset = 0;
+                if(arg2 == NULL){
+                    sendOnSocketf(clientFD, "No socket offset received. Assuming 0.\n");
+                    sectorOffset = 0;
+                } else {
+                    sectorOffset = atoi(arg2);
+                }
+
+                int sectorsToRead = 0;
+                if(arg3 == NULL){
+                    sendOnSocketf(clientFD, "Expected a number of sectors to read. Try again.\n");
+                    continue;
+                } else {
+                    sectorsToRead = atoi(arg3);
+                    if(sectorsToRead <= 0){
+                        sendOnSocketf(clientFD, "Expected a number of sectors to read greater than 0.\n");
                         continue;
                     }
-                    readBuffer[readBufferSize - 1] = 0; // Null terminate
+                }
 
-                    if(printAsHex){
-                        int savedfd = dup(STDOUT_FILENO);
-                        dup2(clientFD, STDOUT_FILENO);
-                        hexDump(readBuffer, readBufferSize);
-                        dup2(savedfd, STDOUT_FILENO); // hack to not have to re-write hexdump function
-
-                    } else {
-                        sendOnSocketf(clientFD, "Read %s from socket\n", readBuffer);
+                if(extra != NULL){
+                    if (strncmp(extra, "-b", sizeof("-b")) == 0){
+                        // -b flag was present
+                        // Print as bytes, not ascii
+                        printAsHex = true;
                     }
-
+                }
+                size_t readBufferSize = sectorsToRead * 512; // TODO: replace 512 with sector size.
+                printf("readbuffersize: %ld\n", readBufferSize);
+                char *readBuffer = malloc(sizeof(char) * readBufferSize); 
+                sendOnSocketf(clientFD, "Reading %lld bytes from part %d at sector %d\n", readBufferSize, partToRead, sectorOffset);
+                rc = nvmeReadPartitionSector(partToRead, sectorOffset, readBuffer, readBufferSize);
+                
+                if(rc == NVME_STATUS_PART_DNE){
+                    sendOnSocketf(clientFD, "Specified partition does not exist.\n");
                     free(readBuffer);
+                    continue;
                 }
+                if(rc != NVME_STATUS_OK){
+                    sendOnSocketf(clientFD, "Encountered an error during read\n");
+                    free(readBuffer);
+                    continue;
+                }
+                readBuffer[readBufferSize - 1] = 0; // Null terminate
+
+                if(printAsHex){
+                    int savedfd = dup(STDOUT_FILENO);
+                    dup2(clientFD, STDOUT_FILENO);
+                    hexDump(readBuffer, readBufferSize);
+                    dup2(savedfd, STDOUT_FILENO); // hack to not have to re-write hexdump function
+
+                } else {
+                    sendOnSocketf(clientFD, "Read %s from socket\n", readBuffer);
+                }
+
+                free(readBuffer);
+            }
 
         }
 
