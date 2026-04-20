@@ -24,6 +24,8 @@
 // New includes for final project
 #include "commandQueue.h"
 #include <linux/limits.h>
+#include "perfInterface.h"
+
 
 #define USE_AESD_CHAR_DEVICE (0)
 
@@ -438,8 +440,12 @@ static void sendCommandUsage(int clientfd){
     str = "read <part> <offset> <num_sectors> -- reads <num_sectors> from <part> \n\0";
     send(clientfd, str, strlen(str), 0);
 
+    
+
     str = "quit --  ends session\n\0";
     send(clientfd, str, strlen(str), 0);
+
+    
 
     str = "----- End Command usage -----\n\n\0";
     send(clientfd, str, strlen(str), 0);
@@ -586,7 +592,6 @@ void* repsondingThread(void* arg)
                 if(rc != NVME_STATUS_OK){
                     sendOnSocketf(clientFD, "Encountered and error while listing drive partitions.\n");
                 }
-                // listparts
             }
             else if(strncmp(cmd, "quit", sizeof("quit")) == 0){
                 threadActive = false;
@@ -599,6 +604,7 @@ void* repsondingThread(void* arg)
                 uint8_t newPartIndex = 0;
                 if(newPartSize > 0){
                     rc = nvmeCreatePartition(newPartSize, &newPartIndex);
+
                     if(rc != NVME_STATUS_OK){
                         sendOnSocketf(clientFD, "\nfailed to create partition.\n");
                     } else {
@@ -850,6 +856,7 @@ int main(int argc, char ** argv){
     }    
 
     commandQueueInit();
+    initPerfSystem();
 
     // Listen for and accept new connection
     if(rc == 0)

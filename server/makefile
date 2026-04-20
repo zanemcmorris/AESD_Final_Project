@@ -17,6 +17,7 @@ PARTED_LIBDIR ?= ../parted/libparted/.libs
 
 # Directory containing libparted.pc
 PARTED_PC_DIR ?= ../parted
+PERF_INC ?= ../final-project-LJ0704/perf_cmd
 
 # Let pkg-config find libnvme.pc
 LIBNVME_PKGCONFIG := $(LIBNVME_PREFIX)/lib/pkgconfig:$(LIBNVME_PREFIX)/lib64/pkgconfig
@@ -30,7 +31,7 @@ PARTED_PKGCONFIG := $(PARTED_PC_DIR):$(PKG_CONFIG_PATH)
 PARTED_CFLAGS := $(shell PKG_CONFIG_PATH=$(PARTED_PKGCONFIG) $(PKG_CONFIG) --cflags libparted)
 PARTED_LIBS   := $(shell PKG_CONFIG_PATH=$(PARTED_PKGCONFIG) $(PKG_CONFIG) --libs libparted)
 
-CFLAGS += $(NVME_CFLAGS) $(PARTED_CFLAGS) -I$(PARTED_LOCAL_INC)
+CFLAGS += $(NVME_CFLAGS) $(PARTED_CFLAGS) -I$(PARTED_LOCAL_INC) -I$(PERF_INC)
 LDLIBS += $(NVME_LIBS) $(PARTED_LIBDIR)/libparted.a -lpthread -lrt -ldevmapper -luuid
 
 BINDIR := bin

@@ -4,3 +4,6 @@
 [submodule "parted"]
 	path = parted
 	url = https://git.savannah.gnu.org/git/parted.git
+[submodule "final-project-LJ0704"]
+	path = final-project-LJ0704
+	url = https://github.com/cu-ecen-aeld/final-project-LJ0704.git
