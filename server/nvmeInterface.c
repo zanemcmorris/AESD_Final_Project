@@ -474,3 +474,41 @@ nvmeStatus_t nvmeReadPartitionSector(uint32_t partNumber, uint32_t sectorNumber,
     return NVME_STATUS_OK;
 }
 
+nvmeStatus_t nvmeCheckLbaRangeInPart(uint8_t partNumber, lbaRange_t range){
+    int rc = 0;
+    PedDevice * dev = NULL;
+    const char *devicePath = "/dev/nvme0n1"; // TODO: Update with known/gathered path.
+    PedPartition * part = NULL;
+
+    dev = ped_device_get(devicePath);
+    if(dev == NULL){
+        perror("ped_device_get failed");
+        return NVME_STATUS_NOT_FOUND;
+    }
+
+    rc = ped_device_open(dev);
+    if(rc == 0){
+        perror("ped_device_open");
+        return NVME_STATUS_ERROR;
+    }
+
+    PedDisk* disk = ped_disk_new(dev);
+    if(!disk){
+        perror("ped_disk_new");
+        return NVME_STATUS_ERROR;
+    }
+
+    part = ped_disk_get_partition(disk, partNumber);
+    if(part == NULL){
+        printf("Specified partition does not exist.\n");
+        ped_disk_destroy(disk);
+        ped_device_close(dev);
+        return NVME_STATUS_PART_DNE;
+    }
+
+    // Continue here
+
+
+    return NVME_STATUS_OK;
+}
+

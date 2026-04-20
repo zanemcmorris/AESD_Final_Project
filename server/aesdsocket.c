@@ -440,14 +440,27 @@ static void sendCommandUsage(int clientfd){
     str = "read <part> <offset> <num_sectors> -- reads <num_sectors> from <part> \n\0";
     send(clientfd, str, strlen(str), 0);
 
-    
+    str = "\n----- Performance Command Usage -----\n\0";
+    send(clientfd, str, strlen(str), 0);
+
+    str = "seq_write <part> <sector_start> <sector_end> <duration_ms>\n\0";
+    send(clientfd, str, strlen(str), 0);
+
+    str = "seq_read <part> <sector_start> <sector_end> <duration_ms>\n\0";
+    send(clientfd, str, strlen(str), 0);
+
+    str = "rand_write <part> <sector_start> <sector_end> <duration_ms>\n\0";
+    send(clientfd, str, strlen(str), 0);
+
+    str = "rand_read <part> <sector_start> <sector_end> <duration_ms>\n\0";
+    send(clientfd, str, strlen(str), 0);
 
     str = "quit --  ends session\n\0";
     send(clientfd, str, strlen(str), 0);
 
     
 
-    str = "----- End Command usage -----\n\n\0";
+    str = "\n----- End Command usage -----\n\n\0";
     send(clientfd, str, strlen(str), 0);
     
 }
@@ -492,6 +505,7 @@ void* repsondingThread(void* arg)
     send(clientFD, welcomeString, strlen(welcomeString), 0);
     sendCommandUsage(clientFD);
     bool threadActive = true;
+    perfJobInfo_t perfJob = {0};
 
     while(threadActive && !endProgram)
     {
@@ -728,11 +742,59 @@ void* repsondingThread(void* arg)
                 }
 
                 free(readBuffer);
-            }
+            } else if(strncmp(cmd, "seq_write", sizeof("seq_write")) == 0 || strncmp(cmd, "sw", sizeof("sw")) == 0) {
+                // TODO: Finish perf integration here 
+                
+                if(arg1 == NULL || arg2 == NULL || arg3 == NULL || extra == NULL){
+                    sendOnSocketf(clientFD, "expected all arguments. Try again.\n");
+                    continue;
+                }
+                // "seq_write <part> <sector_start> <sector_end> <duration_ms>\n\0";
+                
+                int partToPerf = atoi(arg1);
+                perfJob.lbaRange.startlba = atoi(arg2);
+                perfJob.lbaRange.endlba = atoi(arg3);
+                perfJob.duration_ms = atoi(extra);
 
-        }
+                
+                // add partNumber.Start to lba range
+                
+                if(perfJob.lbaRange.startlba > perfJob.lbaRange.endlba || perfJob.duration_ms < 0){
+                    sendOnSocketf(clientFD, "Bad inputs. Try again.\n");
+                }
 
-        
+                // get partNumber start geo sector here
+                size_t partStartAddr = 0;
+                rc = nvmeCheckLbaRangeInPart(partToPerf, perfJob.lbaRange);
+
+                // TODO: Get partStartAddr too
+                perfJob.lbaRange.startlba += partStartAddr;
+                perfJob.lbaRange.endlba += partStartAddr;
+                
+                perfStartSeqWrite(&perfJob);
+
+
+                printf("got seq_write\n");
+            }else if(strncmp(cmd, "seq_read", sizeof("seq_read")) == 0 || strncmp(cmd, "sr", sizeof("sr")) == 0){
+                if(arg1 == NULL || arg2 == NULL || arg3 == NULL || extra == NULL){
+                    sendOnSocketf(clientFD, "expected all arguments. Try again.\n");
+                    continue;
+                }
+                printf("got seq read\n");
+            } else if(strncmp(cmd, "rand_write", sizeof("rand_write")) == 0 || strncmp(cmd, "rw", sizeof("rw")) == 0) {
+                if(arg1 == NULL || arg2 == NULL || arg3 == NULL || extra == NULL){
+                    sendOnSocketf(clientFD, "expected all arguments. Try again.\n");
+                    continue;
+                }
+                printf("got rand write\n");
+            } else if(strncmp(cmd, "rand_read", sizeof("rand_read")) == 0 || strncmp(cmd, "rr", sizeof("rr")) == 0) {
+                if(arg1 == NULL || arg2 == NULL || arg3 == NULL || extra == NULL){
+                    sendOnSocketf(clientFD, "expected all arguments. Try again.\n");
+                    continue;
+                }
+                printf("got rand read\n");
+            } 
+        }        
     }
     shutdown(clientFD, SHUT_RDWR);
     close(clientFD);
