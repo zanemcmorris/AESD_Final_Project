@@ -12,12 +12,14 @@ TARGET ?= aesdsocket
 LIBNVME_PREFIX ?= ../libnvme/install
 
 PARTED_LOCAL_INC ?= ../parted/include
-
 PARTED_LIBDIR ?= ../parted/libparted/.libs
 
 # Directory containing libparted.pc
 PARTED_PC_DIR ?= ../parted
-PERF_INC ?= ../final-project-LJ0704/perf_cmd
+
+# Perf submodule
+PERF_DIR ?= ../final-project-LJ0704/perf_cmd
+PERF_INC ?= $(PERF_DIR)
 
 # Let pkg-config find libnvme.pc
 LIBNVME_PKGCONFIG := $(LIBNVME_PREFIX)/lib/pkgconfig:$(LIBNVME_PREFIX)/lib64/pkgconfig
@@ -53,6 +55,9 @@ $(BINDIR):
 $(BINDIR)/%.o: %.c | $(BINDIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
+$(BINDIR)/perfInterface.o: $(PERF_DIR)/perfInterface.c | $(BINDIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
 print-vars:
 	@echo "CC=$(CC)"
 	@echo "CFLAGS=$(CFLAGS)"
@@ -63,6 +68,8 @@ print-vars:
 	@echo "PARTED_LIBS=$(PARTED_LIBS)"
 	@echo "PARTED_LOCAL_INC=$(PARTED_LOCAL_INC)"
 	@echo "PARTED_PC_DIR=$(PARTED_PC_DIR)"
+	@echo "PERF_DIR=$(PERF_DIR)"
+	@echo "PERF_INC=$(PERF_INC)"
 
 clean:
 	rm -rf $(BINDIR) *.out $(TARGET)
