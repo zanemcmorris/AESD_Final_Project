@@ -32,4 +32,7 @@ nvmeStatus_t nvmeWritePartitionSector(uint32_t part, uint32_t sectorNumber, char
 nvmeStatus_t nvmeReadPartitionSector(uint32_t part, uint32_t sectorNumber, char* buffer, size_t length);
 
 nvmeStatus_t nvmeCheckLbaRangeInPart(uint8_t part, lbaRange_t range);
+nvmeStatus_t nvmeGetStartLbaInPart(uint8_t part, size_t * lba);
+nvmeStatus_t nvmeGetEndLbaInPart(uint8_t part, size_t * lba);
+
 #endif

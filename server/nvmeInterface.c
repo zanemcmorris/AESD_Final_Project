@@ -508,6 +508,111 @@ nvmeStatus_t nvmeCheckLbaRangeInPart(uint8_t partNumber, lbaRange_t range){
 
     // Continue here
 
+    bool inBounds = true;
+    if(range.startlba + part->geom.start > part->geom.end){
+        inBounds = false;
+    }
+    if(range.endlba + part->geom.start > part->geom.end){
+        inBounds = false;
+    }
+    if(range.endlba - range.startlba > part->geom.length){
+        inBounds = false;
+    }
+
+    if(inBounds){
+        return NVME_STATUS_OK; // lbarange is entirely within partition
+    } else {
+        return NVME_STATUS_ERROR; // lbarange is partially or wholly outside of the partition.
+    }
+}
+/**
+ * @brief Get the starting LBA of a partition, if it exists. 
+ * @param partNumber Partition number of interest
+ * @param lba Pointer to return start address
+ * @return nvmeStatus_t Status of operation. Returns NVME_STATUS_OK if successful.
+ */
+nvmeStatus_t nvmeGetStartLbaInPart(uint8_t partNumber, size_t * lba){
+    int rc = 0;
+    PedDevice * dev = NULL;
+    const char *devicePath = "/dev/nvme0n1"; // TODO: Update with known/gathered path.
+    PedPartition * part = NULL;
+
+    dev = ped_device_get(devicePath);
+    if(dev == NULL){
+        perror("ped_device_get failed");
+        return NVME_STATUS_NOT_FOUND;
+    }
+
+    rc = ped_device_open(dev);
+    if(rc == 0){
+        perror("ped_device_open");
+        return NVME_STATUS_ERROR;
+    }
+
+    PedDisk* disk = ped_disk_new(dev);
+    if(!disk){
+        perror("ped_disk_new");
+        return NVME_STATUS_ERROR;
+    }
+
+    part = ped_disk_get_partition(disk, partNumber);
+    if(part == NULL){
+        printf("Specified partition does not exist.\n");
+        ped_disk_destroy(disk);
+        ped_device_close(dev);
+        return NVME_STATUS_PART_DNE;
+    }
+
+    // Continue here
+
+    *lba = part->geom.start;
+
+
+    return NVME_STATUS_OK;
+}
+
+/**
+ * @brief Get the ending LBA of a partition, if it exists. 
+ * @param partNumber Partition number of interest
+ * @param lba Pointer to return end address
+ * @return nvmeStatus_t Status of operation. Returns NVME_STATUS_OK if successful.
+ */
+nvmeStatus_t nvmeGetEndLbaInPart(uint8_t partNumber, size_t * lba){
+    int rc = 0;
+    PedDevice * dev = NULL;
+    const char *devicePath = "/dev/nvme0n1"; // TODO: Update with known/gathered path.
+    PedPartition * part = NULL;
+
+    dev = ped_device_get(devicePath);
+    if(dev == NULL){
+        perror("ped_device_get failed");
+        return NVME_STATUS_NOT_FOUND;
+    }
+
+    rc = ped_device_open(dev);
+    if(rc == 0){
+        perror("ped_device_open");
+        return NVME_STATUS_ERROR;
+    }
+
+    PedDisk* disk = ped_disk_new(dev);
+    if(!disk){
+        perror("ped_disk_new");
+        return NVME_STATUS_ERROR;
+    }
+
+    part = ped_disk_get_partition(disk, partNumber);
+    if(part == NULL){
+        printf("Specified partition does not exist.\n");
+        ped_disk_destroy(disk);
+        ped_device_close(dev);
+        return NVME_STATUS_PART_DNE;
+    }
+
+    // Continue here
+
+    *lba = part->geom.end;
+
 
     return NVME_STATUS_OK;
 }

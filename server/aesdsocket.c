@@ -764,14 +764,18 @@ void* repsondingThread(void* arg)
                 }
 
                 // get partNumber start geo sector here
+                
                 size_t partStartAddr = 0;
                 rc = nvmeCheckLbaRangeInPart(partToPerf, perfJob.lbaRange);
+                if(rc == NVME_STATUS_ERROR){
+                    sendOnSocketf(clientFD, "Lba range is not possible on this partition (%d).\n", partToPerf);
+                }
 
                 // TODO: Get partStartAddr too
                 perfJob.lbaRange.startlba += partStartAddr;
                 perfJob.lbaRange.endlba += partStartAddr;
                 
-                perfStartSeqWrite(&perfJob);
+                // perfStartSeqWrite(&perfJob);
 
 
                 printf("got seq_write\n");
