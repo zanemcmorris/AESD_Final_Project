@@ -2,8 +2,12 @@
 # GNU makefile
 ################################################################################
 
-CC ?= $(CROSS_COMPILE)gcc
+CROSS_COMPILE ?=
+CC := $(CROSS_COMPILE)gcc
 PKG_CONFIG ?= pkg-config
+AR := $(CROSS_COMPILE)ar
+LD := $(CROSS_COMPILE)ld
+STRIP := $(CROSS_COMPILE)strip
 
 CFLAGS ?= -g -Wall -Werror
 TARGET ?= aesdsocket

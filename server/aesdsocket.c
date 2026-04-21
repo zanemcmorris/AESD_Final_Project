@@ -761,41 +761,180 @@ void* repsondingThread(void* arg)
                 
                 if(perfJob.lbaRange.startlba > perfJob.lbaRange.endlba || perfJob.duration_ms < 0){
                     sendOnSocketf(clientFD, "Bad inputs. Try again.\n");
+                    continue; // needed this
                 }
 
                 // get partNumber start geo sector here
                 
-                size_t partStartAddr = 0;
+                size_t partStartAddr = 0, partEndAddr = 0;
                 rc = nvmeCheckLbaRangeInPart(partToPerf, perfJob.lbaRange);
                 if(rc == NVME_STATUS_ERROR){
                     sendOnSocketf(clientFD, "Lba range is not possible on this partition (%d).\n", partToPerf);
+                    continue;
                 }
 
-                // TODO: Get partStartAddr too
+                rc = nvmeGetStartLbaInPart(partToPerf, &partStartAddr);
+                if(rc != NVME_STATUS_OK){
+                    sendOnSocketf(clientFD, "Failed to get start lba for part\n");
+                    continue;
+                }
+
+                rc = nvmeGetEndLbaInPart(partToPerf, &partEndAddr);
+                if(rc != NVME_STATUS_OK){
+                    sendOnSocketf(clientFD, "Failed to get end lba for part\n");
+                    continue;
+                }
+
                 perfJob.lbaRange.startlba += partStartAddr;
                 perfJob.lbaRange.endlba += partStartAddr;
-                
+                sendOnSocketf(clientFD, "Ready to seq_write in range %d-%d\n", perfJob.lbaRange.startlba, perfJob.lbaRange.endlba);
+
+                int savedfd = dup(STDOUT_FILENO);
+                dup2(clientFD, STDOUT_FILENO);
                 // perfStartSeqWrite(&perfJob);
+                dup2(savedfd, STDOUT_FILENO); // hack to not have to re-write hexdump function
 
-
-                printf("got seq_write\n");
             }else if(strncmp(cmd, "seq_read", sizeof("seq_read")) == 0 || strncmp(cmd, "sr", sizeof("sr")) == 0){
                 if(arg1 == NULL || arg2 == NULL || arg3 == NULL || extra == NULL){
                     sendOnSocketf(clientFD, "expected all arguments. Try again.\n");
                     continue;
                 }
-                printf("got seq read\n");
+                
+                int partToPerf = atoi(arg1);
+                perfJob.lbaRange.startlba = atoi(arg2);
+                perfJob.lbaRange.endlba = atoi(arg3);
+                perfJob.duration_ms = atoi(extra);
+
+                
+                // add partNumber.Start to lba range
+                
+                if(perfJob.lbaRange.startlba > perfJob.lbaRange.endlba || perfJob.duration_ms < 0){
+                    sendOnSocketf(clientFD, "Bad inputs. Try again.\n");
+                    continue; // needed this
+                }
+
+                // get partNumber start geo sector here
+                
+                size_t partStartAddr = 0, partEndAddr = 0;
+                rc = nvmeCheckLbaRangeInPart(partToPerf, perfJob.lbaRange);
+                if(rc == NVME_STATUS_ERROR){
+                    sendOnSocketf(clientFD, "Lba range is not possible on this partition (%d).\n", partToPerf);
+                    continue;
+                }
+
+                rc = nvmeGetStartLbaInPart(partToPerf, &partStartAddr);
+                if(rc != NVME_STATUS_OK){
+                    sendOnSocketf(clientFD, "Failed to get start lba for part\n");
+                    continue;
+                }
+
+                rc = nvmeGetEndLbaInPart(partToPerf, &partEndAddr);
+                if(rc != NVME_STATUS_OK){
+                    sendOnSocketf(clientFD, "Failed to get end lba for part\n");
+                    continue;
+                }
+
+                perfJob.lbaRange.startlba += partStartAddr;
+                perfJob.lbaRange.endlba += partStartAddr;
+                sendOnSocketf(clientFD, "Ready to seq_read in range %d-%d\n", perfJob.lbaRange.startlba, perfJob.lbaRange.endlba);
+
+                int savedfd = dup(STDOUT_FILENO);
+                dup2(clientFD, STDOUT_FILENO);
+                perfStartSeqRead(&perfJob);
+                dup2(savedfd, STDOUT_FILENO); // hack to not have to re-write hexdump function
+
             } else if(strncmp(cmd, "rand_write", sizeof("rand_write")) == 0 || strncmp(cmd, "rw", sizeof("rw")) == 0) {
                 if(arg1 == NULL || arg2 == NULL || arg3 == NULL || extra == NULL){
                     sendOnSocketf(clientFD, "expected all arguments. Try again.\n");
                     continue;
                 }
-                printf("got rand write\n");
+                                int partToPerf = atoi(arg1);
+                perfJob.lbaRange.startlba = atoi(arg2);
+                perfJob.lbaRange.endlba = atoi(arg3);
+                perfJob.duration_ms = atoi(extra);
+
+                if(perfJob.lbaRange.startlba > perfJob.lbaRange.endlba || perfJob.duration_ms < 0){
+                    sendOnSocketf(clientFD, "Bad inputs. Try again.\n");
+                    continue; // needed this
+                }
+                
+                size_t partStartAddr = 0, partEndAddr = 0;
+                rc = nvmeCheckLbaRangeInPart(partToPerf, perfJob.lbaRange);
+                if(rc == NVME_STATUS_ERROR){
+                    sendOnSocketf(clientFD, "Lba range is not possible on this partition (%d).\n", partToPerf);
+                    continue;
+                }
+
+                rc = nvmeGetStartLbaInPart(partToPerf, &partStartAddr);
+                if(rc != NVME_STATUS_OK){
+                    sendOnSocketf(clientFD, "Failed to get start lba for part\n");
+                    continue;
+                }
+
+                rc = nvmeGetEndLbaInPart(partToPerf, &partEndAddr);
+                if(rc != NVME_STATUS_OK){
+                    sendOnSocketf(clientFD, "Failed to get end lba for part\n");
+                    continue;
+                }
+
+                perfJob.lbaRange.startlba += partStartAddr;
+                perfJob.lbaRange.endlba += partStartAddr;
+                sendOnSocketf(clientFD, "Ready to rand write in range %d-%d\n", perfJob.lbaRange.startlba, perfJob.lbaRange.endlba);
+
+                int savedfd = dup(STDOUT_FILENO);
+                dup2(clientFD, STDOUT_FILENO);
+                perfStartRandWrite(&perfJob);
+                dup2(savedfd, STDOUT_FILENO); // hack to not have to re-write hexdump function
+
             } else if(strncmp(cmd, "rand_read", sizeof("rand_read")) == 0 || strncmp(cmd, "rr", sizeof("rr")) == 0) {
                 if(arg1 == NULL || arg2 == NULL || arg3 == NULL || extra == NULL){
                     sendOnSocketf(clientFD, "expected all arguments. Try again.\n");
                     continue;
                 }
+
+                                int partToPerf = atoi(arg1);
+                perfJob.lbaRange.startlba = atoi(arg2);
+                perfJob.lbaRange.endlba = atoi(arg3);
+                perfJob.duration_ms = atoi(extra);
+
+                
+                // add partNumber.Start to lba range
+                
+                if(perfJob.lbaRange.startlba > perfJob.lbaRange.endlba || perfJob.duration_ms < 0){
+                    sendOnSocketf(clientFD, "Bad inputs. Try again.\n");
+                    continue; // needed this
+                }
+
+                // get partNumber start geo sector here
+                
+                size_t partStartAddr = 0, partEndAddr = 0;
+                rc = nvmeCheckLbaRangeInPart(partToPerf, perfJob.lbaRange);
+                if(rc == NVME_STATUS_ERROR){
+                    sendOnSocketf(clientFD, "Lba range is not possible on this partition (%d).\n", partToPerf);
+                    continue;
+                }
+
+                rc = nvmeGetStartLbaInPart(partToPerf, &partStartAddr);
+                if(rc != NVME_STATUS_OK){
+                    sendOnSocketf(clientFD, "Failed to get start lba for part\n");
+                    continue;
+                }
+
+                rc = nvmeGetEndLbaInPart(partToPerf, &partEndAddr);
+                if(rc != NVME_STATUS_OK){
+                    sendOnSocketf(clientFD, "Failed to get end lba for part\n");
+                    continue;
+                }
+
+                perfJob.lbaRange.startlba += partStartAddr;
+                perfJob.lbaRange.endlba += partStartAddr;
+                sendOnSocketf(clientFD, "Ready to rand_read in range %d-%d\n", perfJob.lbaRange.startlba, perfJob.lbaRange.endlba);
+
+                int savedfd = dup(STDOUT_FILENO);
+                dup2(clientFD, STDOUT_FILENO);
+                perfStartRandRead(&perfJob);
+                dup2(savedfd, STDOUT_FILENO); // hack to not have to re-write hexdump function
+
                 printf("got rand read\n");
             } 
         }        
