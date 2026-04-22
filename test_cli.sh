@@ -61,7 +61,7 @@ fi
 if [ -n "$NC_ARGS" ]; then
     run_commands | sh -c "nc $NC_ARGS \"$HOST\" \"$PORT\"" | tee "$LOG"
 else
-    run_commands | nc "$HOST" "$PORT" | tee "$LOG"
+    run_commands | telnet "$HOST" "$PORT" | tee "$LOG"
 fi
 
 echo >&2
