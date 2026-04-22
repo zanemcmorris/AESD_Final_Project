@@ -669,6 +669,11 @@ void* repsondingThread(void* arg)
                 sendOnSocketf(clientFD, "Writing %lld bytes to part %d at sector %d\n", strlen(arg1), partToWrite, sectorOffset);
 
                 rc = nvmeWritePartitionSector(partToWrite, sectorOffset, arg1, strlen(arg1));
+                if(rc == NVME_STATUS_BAD_NAME){
+                    sendOnSocketf(clientFD, "Cannot write to partition that doesn't prefix with AESD.\n\
+                        Try to write to a partition created with this utility instead.\n");
+                        continue;
+                }
                 if(rc != NVME_STATUS_OK){
                     sendOnSocketf(clientFD, "An error occured during the write operation.\n");
                 }

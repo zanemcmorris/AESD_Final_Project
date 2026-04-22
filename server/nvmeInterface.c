@@ -16,6 +16,14 @@
 #include <endian.h>
 
 /**
+ * @brief SAFE_MODE enables checks for the partition name starting with "AESD" before writing data
+ *          Keep SAFE_MODE on if you have non-AESD partitions on your drive.
+ */
+#define NVME_SAFE_MODE (1)
+
+static nvmeStatus_t nvmeCheckNameSafety(PedPartition * part);
+
+/**
  * @brief Gets information about the interface, drive(s), and namespaces
  */
 static void print_namespace_info(nvme_ns_t n)
@@ -144,6 +152,9 @@ nvmeStatus_t nvmeListPartitions(){
 
         const char* partName = ped_partition_get_name(part);
         printf("part %d name: %s\n", i, partName);
+        printf("\tSize: %lld Sectors\n", part->geom.length);
+        printf("\tStart: %lld | End: %lld\n", part->geom.start, part->geom.end);
+
     }
     
 
@@ -224,6 +235,8 @@ nvmeStatus_t nvmeCreatePartition(uint32_t size, uint8_t* newPartNumber){
         printf("created new part!\n");
     }
 
+    
+
     constraint = ped_device_get_optimal_aligned_constraint(dev);
     
 
@@ -232,6 +245,16 @@ nvmeStatus_t nvmeCreatePartition(uint32_t size, uint8_t* newPartNumber){
         perror("ped_disk_add_partition");
         goto createParitionError;
     }
+
+    char partName[16] = {0};
+    int charsPrinted = snprintf(partName, 16, "AESD Part %d", newPart->num);
+    printf("trying to name part %s\n", partName);
+    if(charsPrinted != strlen(partName)){
+        perror("couldnt name new partition");
+        goto createParitionError;
+    }
+
+    ped_partition_set_name(newPart, partName);
 
     rc = ped_disk_commit_to_dev(disk);
     if(rc == 0){
@@ -250,9 +273,9 @@ nvmeStatus_t nvmeCreatePartition(uint32_t size, uint8_t* newPartNumber){
     return NVME_STATUS_OK;
 
     createParitionError:
-    ped_disk_destroy(disk);
-    ped_device_close(dev);
-    ped_constraint_destroy(constraint);
+    // ped_disk_destroy(disk);
+    // ped_device_close(dev);
+    // ped_constraint_destroy(constraint);
     return NVME_STATUS_ERROR;
 }
 
@@ -383,23 +406,32 @@ nvmeStatus_t nvmeWritePartitionSector(uint32_t partNumber, uint32_t sectorNumber
         ped_device_close(dev);
         return NVME_STATUS_INPUT;
     }    
+
+    #if NVME_SAFE_MODE
+    rc = nvmeCheckNameSafety(partToWrite);
+    if(rc != NVME_STATUS_OK){
+        printf("Detected write on non-AESD partition with SAFE_MODE active.\nSaving you from yourself.\n");
+        return NVME_STATUS_BAD_NAME;
+    }
+
+    #endif
     
     printf("writing geom %lld %lld %lld\n", partToWrite->geom.start, partToWrite->geom.length, partToWrite->geom.end);
-    int sectorCount = 1;
+    // int sectorCount = 1;
 
-    rc = ped_geometry_write(&(partToWrite->geom), buffer, 0, sectorCount);
-    if(rc == 0)
-    {
-        perror("ped_geometry_write");
-        return NVME_STATUS_ERROR;
-    }
+    // rc = ped_geometry_write(&(partToWrite->geom), buffer, 0, sectorCount);
+    // if(rc == 0)
+    // {
+    //     perror("ped_geometry_write");
+    //     return NVME_STATUS_ERROR;
+    // }
 
-    rc = ped_geometry_sync(&(partToWrite->geom));
-    if(rc == 0)
-    {
-        perror("ped_geometry_sync");
-        return NVME_STATUS_ERROR;
-    }
+    // rc = ped_geometry_sync(&(partToWrite->geom));
+    // if(rc == 0)
+    // {
+    //     perror("ped_geometry_sync");
+    //     return NVME_STATUS_ERROR;
+    // }
 
 
     // ped_partition_destroy(partToWrite);
@@ -509,6 +541,10 @@ nvmeStatus_t nvmeCheckLbaRangeInPart(uint8_t partNumber, lbaRange_t range){
     // Continue here
 
     bool inBounds = true;
+    size_t size = range.endlba - range.startlba;
+    if(size > part->geom.length){
+        inBounds = false;
+    }
     if(range.startlba + part->geom.start > part->geom.end){
         inBounds = false;
     }
@@ -617,3 +653,18 @@ nvmeStatus_t nvmeGetEndLbaInPart(uint8_t partNumber, size_t * lba){
     return NVME_STATUS_OK;
 }
 
+
+
+nvmeStatus_t nvmeCheckNameSafety(PedPartition * partToCheck){
+    int rc = 0;
+    const char* partName = ped_partition_get_name(partToCheck);
+    printf("comparing string %s to AESD\n", partName);
+
+    rc = strncmp(partName, "AESD", strlen("AESD"));
+    printf("Check rc: %d\n", rc);
+    if(rc == 0){
+        return NVME_STATUS_OK;
+    } else {
+        return NVME_STATUS_BAD_NAME;
+    }
+}
