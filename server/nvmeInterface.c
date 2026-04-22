@@ -226,8 +226,20 @@ nvmeStatus_t nvmeCreatePartition(uint32_t size, uint8_t* newPartNumber){
     if(sectorStart + size > maxSector){
         return NVME_STATUS_INPUT;
     }
+
+    PedPartition *last = ped_disk_get_partition(disk, lastPartNum);
+    if (!last) {
+        return NVME_STATUS_ERROR;
+    }
+
+    sectorStart = last->geom.end + 1;
+    PedSector sectorEnd = sectorStart + size - 1;
+
+    if (sectorEnd > dev->length - 1) {
+        return NVME_STATUS_INPUT;
+    }
      
-    PedPartition *newPart = ped_partition_new(disk, PED_PARTITION_NORMAL, fsType, sectorStart, sectorStart + size - 1);
+    PedPartition *newPart = ped_partition_new(disk, PED_PARTITION_NORMAL, fsType, sectorStart, sectorEnd);
     if(newPart == NULL){
         perror("ped_partition_new");
         goto createParitionError;
@@ -235,10 +247,7 @@ nvmeStatus_t nvmeCreatePartition(uint32_t size, uint8_t* newPartNumber){
         printf("created new part!\n");
     }
 
-    
-
     constraint = ped_device_get_optimal_aligned_constraint(dev);
-    
 
     rc = ped_disk_add_partition(disk, newPart, constraint);
     if(rc == 0){
@@ -314,6 +323,14 @@ nvmeStatus_t nvmeDeletePartition(int partNumber){
         perror("ped_disk_get_partition");
         return NVME_STATUS_INPUT;
     }
+
+    #if NVME_SAFE_MODE
+    rc = nvmeCheckNameSafety(partToDelete);
+    if(rc != NVME_STATUS_OK){
+        printf("Detected rmpart on non-AESD partition with SAFE_MODE active.\nSaving you from yourself.\n");
+        return NVME_STATUS_BAD_NAME;
+    }
+    #endif
 
     rc = ped_disk_delete_partition(disk, partToDelete);
     if(rc == 0){
@@ -417,21 +434,21 @@ nvmeStatus_t nvmeWritePartitionSector(uint32_t partNumber, uint32_t sectorNumber
     #endif
     
     printf("writing geom %lld %lld %lld\n", partToWrite->geom.start, partToWrite->geom.length, partToWrite->geom.end);
-    // int sectorCount = 1;
+    int sectorCount = 1;
 
-    // rc = ped_geometry_write(&(partToWrite->geom), buffer, 0, sectorCount);
-    // if(rc == 0)
-    // {
-    //     perror("ped_geometry_write");
-    //     return NVME_STATUS_ERROR;
-    // }
+    rc = ped_geometry_write(&(partToWrite->geom), buffer, 0, sectorCount);
+    if(rc == 0)
+    {
+        perror("ped_geometry_write");
+        return NVME_STATUS_ERROR;
+    }
 
-    // rc = ped_geometry_sync(&(partToWrite->geom));
-    // if(rc == 0)
-    // {
-    //     perror("ped_geometry_sync");
-    //     return NVME_STATUS_ERROR;
-    // }
+    rc = ped_geometry_sync(&(partToWrite->geom));
+    if(rc == 0)
+    {
+        perror("ped_geometry_sync");
+        return NVME_STATUS_ERROR;
+    }
 
 
     // ped_partition_destroy(partToWrite);
@@ -653,11 +670,62 @@ nvmeStatus_t nvmeGetEndLbaInPart(uint8_t partNumber, size_t * lba){
     return NVME_STATUS_OK;
 }
 
-
-
+/**
+ * @brief Check that the name of partition is prefixed with AESD
+ * @return NVME_STATUS_OK if name starts with AESD, NVME_STATUS_BAD_NAME otherwise.
+ */
 nvmeStatus_t nvmeCheckNameSafety(PedPartition * partToCheck){
     int rc = 0;
     const char* partName = ped_partition_get_name(partToCheck);
+    printf("comparing string %s to AESD\n", partName);
+
+    rc = strncmp(partName, "AESD", strlen("AESD"));
+    printf("Check rc: %d\n", rc);
+    if(rc == 0){
+        return NVME_STATUS_OK;
+    } else {
+        return NVME_STATUS_BAD_NAME;
+    }
+}
+
+/**
+ * @brief Check that the name of partition associated with the partnumber is prefixed with AESD
+ * @return NVME_STATUS_OK if name starts with AESD, NVME_STATUS_BAD_NAME otherwise.
+ */
+nvmeStatus_t nvmeCheckNameSafetyPartNumber(uint8_t partNumber){
+    int rc = 0;
+    PedDevice * dev = NULL;
+    const char *devicePath = "/dev/nvme0n1"; // TODO: Update with known/gathered path.
+    PedPartition * partToCheck = NULL;
+
+    dev = ped_device_get(devicePath);
+    if(dev == NULL){
+        perror("ped_device_get failed");
+        return NVME_STATUS_NOT_FOUND;
+    }
+
+    rc = ped_device_open(dev);
+    if(rc == 0){
+        perror("ped_device_open");
+        return NVME_STATUS_ERROR;
+    }
+
+    PedDisk* disk = ped_disk_new(dev);
+    if(!disk){
+        perror("ped_disk_new");
+        return NVME_STATUS_ERROR;
+    }
+
+    partToCheck = ped_disk_get_partition(disk, partNumber);
+    if(partToCheck == NULL){
+        printf("Specified partition does not exist.\n");
+        ped_disk_destroy(disk);
+        ped_device_close(dev);
+        return NVME_STATUS_PART_DNE;
+    }
+
+    const char* partName = ped_partition_get_name(partToCheck);
+
     printf("comparing string %s to AESD\n", partName);
 
     rc = strncmp(partName, "AESD", strlen("AESD"));

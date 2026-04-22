@@ -434,7 +434,7 @@ static void sendCommandUsage(int clientfd){
     str = "rmpart <part_number> \n\0";
     send(clientfd, str, strlen(str), 0);
     
-    str = "write <data> <part> <offset> -- writes <data> to <part>\n\0";
+    str = "write <part> <data> <offset> -- writes <data> to <part>\n\0";
     send(clientfd, str, strlen(str), 0);
 
     str = "read <part> <offset> <num_sectors> -- reads <num_sectors> from <part> \n\0";
@@ -443,16 +443,16 @@ static void sendCommandUsage(int clientfd){
     str = "\n----- Performance Command Usage -----\n\0";
     send(clientfd, str, strlen(str), 0);
 
-    str = "seq_write <part> <sector_start> <sector_end> <duration_ms>\n\0";
+    str = "seq_write/sw <part> <sector_start> <sector_end> <duration_ms>\n\0";
     send(clientfd, str, strlen(str), 0);
 
-    str = "seq_read <part> <sector_start> <sector_end> <duration_ms>\n\0";
+    str = "seq_read/sr <part> <sector_start> <sector_end> <duration_ms>\n\0";
     send(clientfd, str, strlen(str), 0);
 
-    str = "rand_write <part> <sector_start> <sector_end> <duration_ms>\n\0";
+    str = "rand_write/rw <part> <sector_start> <sector_end> <duration_ms>\n\0";
     send(clientfd, str, strlen(str), 0);
 
-    str = "rand_read <part> <sector_start> <sector_end> <duration_ms>\n\0";
+    str = "rand_read/rr <part> <sector_start> <sector_end> <duration_ms>\n\0";
     send(clientfd, str, strlen(str), 0);
 
     str = "quit --  ends session\n\0";
@@ -638,7 +638,12 @@ void* repsondingThread(void* arg)
                 int partToDel = atoi(arg1);
                 if(partToDel > 0){
                     rc = nvmeDeletePartition(partToDel);
-                    if(rc != NVME_STATUS_OK){
+                    if(rc == NVME_STATUS_BAD_NAME){
+                    sendOnSocketf(clientFD, "Cannot delete a partition that doesn't prefix with AESD with SAFE_MODE active.\
+                        \nTry to delete a partition created with this utility instead.\n");
+                        continue;
+                    }
+                    else if(rc != NVME_STATUS_OK){
                         sendOnSocketf(clientFD, "failed to delete partition.\n");
                     } else {
                         sendOnSocketf(clientFD, "deleted part with number %d\n", partToDel);
@@ -650,11 +655,11 @@ void* repsondingThread(void* arg)
                 printf("got write\n");
                 //    str = "write <data> <part> <offset> -- writes <data> to <part>\n\0";
                 int partToWrite = 0;
-                if(arg2 == NULL){
+                if(arg1 == NULL){
                     sendOnSocketf(clientFD, "Expected a partition to write to. Try again.\n");
                     continue;
                 } else {
-                    partToWrite = atoi(arg2);
+                    partToWrite = atoi(arg1);
                 }
 
 
@@ -666,12 +671,12 @@ void* repsondingThread(void* arg)
                 } else {
                     sectorOffset = atoi(arg3);
                 }
-                sendOnSocketf(clientFD, "Writing %lld bytes to part %d at sector %d\n", strlen(arg1), partToWrite, sectorOffset);
+                sendOnSocketf(clientFD, "Writing %lld bytes to part %d at sector %d\n", strlen(arg2), partToWrite, sectorOffset);
 
-                rc = nvmeWritePartitionSector(partToWrite, sectorOffset, arg1, strlen(arg1));
+                rc = nvmeWritePartitionSector(partToWrite, sectorOffset, arg2, strlen(arg2));
                 if(rc == NVME_STATUS_BAD_NAME){
-                    sendOnSocketf(clientFD, "Cannot write to partition that doesn't prefix with AESD.\n\
-                        Try to write to a partition created with this utility instead.\n");
+                    sendOnSocketf(clientFD, "Cannot write to partition that doesn't prefix with AESD with SAFE_MODE active.\
+                        \nTry to write to a partition created with this utility instead.\n");
                         continue;
                 }
                 if(rc != NVME_STATUS_OK){
@@ -754,22 +759,26 @@ void* repsondingThread(void* arg)
                     sendOnSocketf(clientFD, "expected all arguments. Try again.\n");
                     continue;
                 }
-                // "seq_write <part> <sector_start> <sector_end> <duration_ms>\n\0";
                 
                 int partToPerf = atoi(arg1);
                 perfJob.lbaRange.startlba = atoi(arg2);
                 perfJob.lbaRange.endlba = atoi(arg3);
                 perfJob.duration_ms = atoi(extra);
 
-                
-                // add partNumber.Start to lba range
+                rc = nvmeCheckNameSafetyPartNumber(partToPerf);
+                if(rc == NVME_STATUS_BAD_NAME){
+                    sendOnSocketf(clientFD, "Cannot test performance on a partition that doesn't prefix with AESD with SAFE_MODE active.\
+                        \nTry to test a partition created with this utility instead.\n");
+                        continue;
+                }else if(rc != NVME_STATUS_OK){
+                    sendOnSocketf(clientFD, "Encountered an error during namecheck\n");
+                        continue;
+                }
                 
                 if(perfJob.lbaRange.startlba > perfJob.lbaRange.endlba || perfJob.duration_ms < 0){
                     sendOnSocketf(clientFD, "Bad inputs. Try again.\n");
-                    continue; // needed this
+                    continue;
                 }
-
-                // get partNumber start geo sector here
                 
                 size_t partStartAddr = 0, partEndAddr = 0;
                 rc = nvmeCheckLbaRangeInPart(partToPerf, perfJob.lbaRange);
@@ -796,7 +805,7 @@ void* repsondingThread(void* arg)
 
                 int savedfd = dup(STDOUT_FILENO);
                 dup2(clientFD, STDOUT_FILENO);
-                // perfStartSeqWrite(&perfJob);
+                perfStartSeqWrite(&perfJob);
                 dup2(savedfd, STDOUT_FILENO); // hack to not have to re-write hexdump function
 
             }else if(strncmp(cmd, "seq_read", sizeof("seq_read")) == 0 || strncmp(cmd, "sr", sizeof("sr")) == 0){
@@ -853,10 +862,21 @@ void* repsondingThread(void* arg)
                     sendOnSocketf(clientFD, "expected all arguments. Try again.\n");
                     continue;
                 }
-                                int partToPerf = atoi(arg1);
+
+                int partToPerf = atoi(arg1);
                 perfJob.lbaRange.startlba = atoi(arg2);
                 perfJob.lbaRange.endlba = atoi(arg3);
                 perfJob.duration_ms = atoi(extra);
+
+                rc = nvmeCheckNameSafetyPartNumber(partToPerf);
+                if(rc == NVME_STATUS_BAD_NAME){
+                    sendOnSocketf(clientFD, "Cannot test performance on a partition that doesn't prefix with AESD with SAFE_MODE active.\
+                        \nTry to test a partition created with this utility instead.\n");
+                        continue;
+                } else if(rc != NVME_STATUS_OK){
+                    sendOnSocketf(clientFD, "Encountered an error during namecheck\n");
+                        continue;
+                }
 
                 if(perfJob.lbaRange.startlba > perfJob.lbaRange.endlba || perfJob.duration_ms < 0){
                     sendOnSocketf(clientFD, "Bad inputs. Try again.\n");
